@@ -716,13 +716,22 @@ async function loadBooks() {
     dot: b.dot || 'bg-stone-500',
     is_locked: b.is_locked || false,
   }));
-  if (['admin','owner','editor'].includes(role)) {
+  if (role === 'owner') {
     BOOKS = allBooks;
+  } else if (role === 'admin') {
+    // Admin sees only assigned books
+    const { data: ab } = await supa.from('admin_books').select('book_id').eq('admin_id', currentUser?.id);
+    const adminIds = (ab || []).map(r => r.book_id);
+    BOOKS = adminIds.length ? allBooks.filter(b => adminIds.includes(b.id)) : allBooks;
+  } else if (role === 'editor') {
+    // Editor sees only assigned books
+    const { data: eb } = await supa.from('editor_books').select('book_id').eq('editor_id', currentUser?.id);
+    const editorIds = (eb || []).map(r => r.book_id);
+    BOOKS = editorIds.length ? allBooks.filter(b => editorIds.includes(b.id)) : [];
   } else {
-    // Get accessible book IDs for this user
+    // Sänger sees only accessible books + standard book
     const { data: access } = await supa.from('user_book_access').select('book_id').eq('user_id', currentUser?.id);
     const accessIds = (access || []).map(r => r.book_id);
-    // Also include standard book from settings
     const stdId = settingsCache['standard_book_id'] || '';
     const allowedIds = [...new Set([...accessIds, stdId].filter(Boolean))];
     BOOKS = allBooks.filter(b => allowedIds.includes(b.id));
