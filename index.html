@@ -1663,27 +1663,22 @@ async function createUser() {
 
   errEl.style.display = 'none';
 
-  if (!name)  { errEl.textContent = 'Bitte Namen eingeben.';     errEl.style.display = 'block'; return; }
-  if (!email) { errEl.textContent = 'Bitte E-Mail eingeben.';    errEl.style.display = 'block'; return; }
+  if (!name)  { errEl.textContent = 'Bitte Namen eingeben.';  errEl.style.display = 'block'; return; }
+  if (!email) { errEl.textContent = 'Bitte E-Mail eingeben.'; errEl.style.display = 'block'; return; }
   if (!pw || pw.length < 6) { errEl.textContent = 'Passwort muss mind. 6 Zeichen haben.'; errEl.style.display = 'block'; return; }
 
   btn.disabled = true;
   btn.textContent = 'Anlegen…';
 
-  // Use Supabase Admin API via service role – but we only have anon key.
-  // Workaround: use signUp then immediately update role via our RPC.
-  // We need a server-side function for this. Use our existing RPC pattern.
-  const { data, error } = await supa.rpc('admin_create_user', {
-    p_email: email,
-    p_password: pw,
-    p_full_name: name,
-    p_role: uRole
+  // Step 1: Register the user with signUp (auto-confirm is on in Supabase settings)
+  const { data, error } = await supa.auth.signUp({
+    email,
+    password: pw,
+    options: { data: { full_name: name } }
   });
 
-  btn.disabled = false;
-  btn.textContent = 'Anlegen';
-
   if (error) {
+    btn.disabled = false; btn.textContent = 'Anlegen';
     errEl.textContent = error.message.includes('already registered')
       ? 'Diese E-Mail ist bereits registriert.'
       : 'Fehler: ' + error.message;
@@ -1691,8 +1686,15 @@ async function createUser() {
     return;
   }
 
+  // Step 2: Set role if not 'user' – wait briefly for trigger to create profile
+  if (uRole !== 'user' && data.user) {
+    await new Promise(r => setTimeout(r, 1000));
+    await supa.rpc('set_user_role', { target_user_id: data.user.id, new_role: uRole });
+  }
+
+  btn.disabled = false; btn.textContent = 'Anlegen';
   closeNewUserModal();
-  showToast(`Nutzer "${name}" angelegt`);
+  showToast(`Nutzer "${name}" angelegt – kann sich sofort anmelden`);
   await loadUsers();
 }
 
@@ -1742,7 +1744,7 @@ initAuth();
         </select>
       </div>
       <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:12px;padding:12px 14px;font-size:12px;color:#15803d;line-height:1.6;">
-        Der Nutzer kann sich direkt mit dieser E-Mail und dem Passwort anmelden. Das Passwort sollte beim ersten Login geändert werden.
+        Voraussetzung: In Supabase unter Authentication → Providers → Email muss <b>"Confirm email"</b> deaktiviert sein. Dann kann sich der Nutzer sofort anmelden.
       </div>
     </div>
     <div style="display:flex;gap:10px;margin-top:20px;">
