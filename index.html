@@ -677,7 +677,11 @@ async function afterLogin(user) {
     if (dbRole === 'owner') sel.innerHTML += '<option value="owner">Owner</option>';
     sel.value = dbRole;
   }
-  // Load data
+  // Load settings first so standard_book_id is available for loadBooks()
+  const { data: settingsData } = await supa.from('app_settings').select('*');
+  settingsCache = {};
+  (settingsData || []).forEach(r => settingsCache[r.key] = r.value);
+  // Then load books (uses settingsCache for standard book)
   await Promise.all([loadBooks(), loadSongs()]);
   role = dbRole;
   // Hide login
