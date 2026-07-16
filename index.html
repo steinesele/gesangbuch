@@ -510,9 +510,12 @@ let currentProfile = null;
 
     <div>
       <div class="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-3">Bücher Admins zuweisen</div>
-      <p class="text-xs text-stone-500 mb-3">Wähle einen Admin und weise ihm Bücher zu. Er kann dann Editoren und User für diese Bücher freischalten.</p>
-      <div id="owner-book-assignments" class="space-y-3">
-        <div class="text-xs text-stone-400">Lade Admins...</div>
+      <p class="text-xs text-stone-500 mb-3">Admin auswählen – dann Bücher per Checkbox zuweisen.</p>
+      <div class="space-y-3">
+        <select id="owner-admin-select" onchange="renderAdminBookCheckboxes()" class="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-forest-600 text-stone-800">
+          <option value="">– Admin auswählen –</option>
+        </select>
+        <div id="owner-book-assignments" class="space-y-2 hidden"></div>
       </div>
       <button onclick="loadOwnerAssignments()" class="mt-3 text-xs text-forest-700 font-semibold hover:underline">Aktualisieren</button>
     </div>
@@ -1853,97 +1856,138 @@ async function runXlsxImport(){
   if(!xlsxRows.length){ showToast('Keine Daten zum Importieren'); return; }
   const bookId = document.getElementById('import-book-select').value;
   const book = BOOKS.find(b=>b.id===bookId);
-  if(!book){ showToast('Bitte Gesangbuch auswählen'); return; }
+  if(!bookId||!book){ showToast('Bitte zuerst ein Gesangbuch auswählen'); return; }
   const btn = document.querySelector('#screen-import button[onclick="runXlsxImport()"]');
   if(btn){ btn.disabled=true; btn.textContent='Importiere...'; }
-  let ok=0, err=0;
+  const res = document.getElementById('import-result');
+  res.classList.remove('hidden');
+  res.className = 'bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800';
+  res.textContent = 'Import läuft...';
+  let ok=0, errors=[];
   for(const r of xlsxRows){
     const title  = String(r['Liedtitel']||r['Title']||r['title']||Object.values(r)[0]||'').trim();
     const text   = String(r['Vollständiger Text']||r['Text']||r['lyrics']||'').trim();
     const cat    = String(r['Kategorie']||r['Category']||'Volkslieder').trim();
     const pageRaw= String(r['Seitenzahl(en)']||r['Seitenzahl']||r['Page']||'').trim();
     const page   = parseInt(pageRaw.split(/[-–]/)[0])||null;
-    if(!title){ err++; continue; }
-    try {
-      const {data:song, error:sErr} = await supa.from('songs')
-        .upsert({title, category:cat, created_by:currentUser.id, updated_at:new Date().toISOString()}, {onConflict:'title'})
-        .select().single();
-      if(sErr||!song){ err++; continue; }
-      await supa.from('song_books').upsert({song_id:song.id, book_id:bookId, page_number:page}, {onConflict:'song_id,book_id'});
-      if(text){
-        const {data:existing} = await supa.from('song_variants').select('id').eq('song_id',song.id).eq('label','Standard').single();
-        if(existing){
-          await supa.from('song_variants').update({lyrics:text}).eq('id',existing.id);
-        } else {
-          await supa.from('song_variants').insert({song_id:song.id, label:'Standard', lyrics:text});
-        }
+    if(!title){ errors.push('Zeile ohne Titel übersprungen'); continue; }
+    // Song anlegen oder aktualisieren
+    const {data:song, error:sErr} = await supa.from('songs')
+      .upsert({title, category:cat, created_by:currentUser.id, updated_at:new Date().toISOString()}, {onConflict:'title'})
+      .select().single();
+    if(sErr||!song){ errors.push(`"${title}": ${sErr?.message||'Unbekannter Fehler beim Anlegen'}`); continue; }
+    // Buch zuordnen
+    const {error:sbErr} = await supa.from('song_books')
+      .upsert({song_id:song.id, book_id:bookId, page_number:page}, {onConflict:'song_id,book_id'});
+    if(sbErr){ errors.push(`"${title}": Buchzuordnung fehlgeschlagen – ${sbErr.message}`); continue; }
+    // Text speichern
+    if(text){
+      const {data:existing} = await supa.from('song_variants').select('id').eq('song_id',song.id).eq('label','Standard').maybeSingle();
+      if(existing){
+        await supa.from('song_variants').update({lyrics:text}).eq('id',existing.id);
+      } else {
+        const {error:vErr} = await supa.from('song_variants').insert({song_id:song.id, label:'Standard', lyrics:text});
+        if(vErr) errors.push(`"${title}": Text-Variante fehlgeschlagen – ${vErr.message}`);
       }
-      ok++;
-    } catch(e){ err++; }
+    }
+    ok++;
+    if(ok%10===0) res.textContent = `Importiere... ${ok} von ${xlsxRows.length}`;
   }
   if(btn){ btn.disabled=false; btn.textContent='Alle Lieder importieren'; }
-  const res = document.getElementById('import-result');
-  res.classList.remove('hidden');
-  res.innerHTML = `✓ ${ok} Lieder erfolgreich importiert${err?` · ${err} Fehler`:''}`;
-  showToast(`Import: ${ok} Lieder importiert`);
-  xlsxRows = [];
-  document.getElementById('import-preview').classList.add('hidden');
-  document.getElementById('xlsx-input').value='';
+  if(errors.length){
+    res.className = 'bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800';
+    res.innerHTML = `<div class="font-semibold mb-2">${ok} Lieder importiert, ${errors.length} Fehler:</div>`
+      + `<div class="space-y-1 max-h-32 overflow-y-auto text-xs">${errors.slice(0,10).map(e=>`<div>• ${esc(e)}</div>`).join('')}${errors.length>10?`<div>... und ${errors.length-10} weitere</div>`:''}</div>`;
+  } else {
+    res.className = 'bg-forest-50 border border-forest-200 rounded-xl p-4 text-sm text-forest-800';
+    res.innerHTML = `✓ ${ok} Lieder erfolgreich in "${esc(book.name)}" importiert`;
+  }
+  showToast(`Import: ${ok} Lieder importiert${errors.length?' ('+errors.length+' Fehler)':''}`);
+  if(!errors.length){
+    xlsxRows = [];
+    document.getElementById('import-preview').classList.add('hidden');
+    document.getElementById('xlsx-input').value='';
+  }
+  await loadBooksFromSupabase();
 }
 
 
 // ══════ OWNER: BUCH-ZUWEISUNG AN ADMINS ══════
+let _ownerAdmins = [];
+let _ownerBooks = [];
+let _ownerAssignments = [];
+
 async function loadOwnerAssignments(){
   if(role!=='owner') return;
-  // Use RPC to get all profiles (bypasses RLS)
   const {data:allProfiles} = await supa.rpc('get_all_profiles');
-  const admins = (allProfiles||[]).filter(p=>['admin','owner'].includes(p.role));
-  // Load all books fresh from DB
+  _ownerAdmins = (allProfiles||[]).filter(p=>['admin','owner'].includes(p.role) && p.id!==currentUser?.id);
   const {data:allBooks} = await supa.from('books').select('*').order('name');
-  // Load existing assignments
+  _ownerBooks = allBooks||[];
   const {data:assignments} = await supa.from('admin_books').select('*');
+  _ownerAssignments = assignments||[];
 
-  // Populate standard book selector from fresh DB data
+  // Populate standard book selector
   const stdSel = document.getElementById('set-standard-book');
   if(stdSel){
     stdSel.innerHTML = '<option value="">– Kein Standardbuch –</option>'
-      + (allBooks||[]).map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join('');
+      + _ownerBooks.map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join('');
     const current = settingsCache['standard_book_id']||'';
     if(current) stdSel.value = current;
   }
 
+  // Populate admin dropdown
+  const adminSel = document.getElementById('owner-admin-select');
+  if(adminSel){
+    const prev = adminSel.value;
+    adminSel.innerHTML = '<option value="">– Admin auswählen –</option>'
+      + _ownerAdmins.map(a=>`<option value="${a.id}">${esc(a.full_name||a.email||'Admin')} (${a.role})</option>`).join('');
+    if(prev) adminSel.value = prev;
+    if(!_ownerAdmins.length){
+      adminSel.innerHTML = '<option value="">Noch keine Admins vorhanden</option>';
+    }
+  }
+  renderAdminBookCheckboxes();
+}
+
+function renderAdminBookCheckboxes(){
+  const adminId = document.getElementById('owner-admin-select')?.value;
   const el = document.getElementById('owner-book-assignments');
   if(!el) return;
-  if(!(admins||[]).filter(a=>a.id!==currentUser?.id).length){
-    el.innerHTML='<div class="text-xs text-stone-400">Noch keine Admins vorhanden. Weise zuerst einem User die Admin-Rolle zu.</div>';
+  if(!adminId){ el.classList.add('hidden'); el.innerHTML=''; return; }
+  const myAssignments = _ownerAssignments.filter(a=>a.admin_id===adminId).map(a=>a.book_id);
+  el.classList.remove('hidden');
+  if(!_ownerBooks.length){
+    el.innerHTML='<div class="text-xs text-stone-400">Keine Bücher vorhanden. Zuerst ein Gesangbuch anlegen.</div>';
     return;
   }
-  el.innerHTML = (admins||[]).filter(a=>a.id!==currentUser?.id).map(admin=>{
-    const myAssignments = (assignments||[]).filter(a=>a.admin_id===admin.id).map(a=>a.book_id);
-    return `<div class="bg-stone-50 border border-stone-200 rounded-xl p-3">
-      <div class="flex items-center gap-2 mb-2">
-        <div class="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-red-700 text-xs font-bold">${(admin.full_name||admin.email||'A').slice(0,2).toUpperCase()}</div>
-        <div class="text-sm font-semibold text-stone-800">${esc(admin.full_name||admin.email||'Admin')}</div>
-        <span class="text-xs text-stone-400 ml-auto">${esc(admin.role)}</span>
-      </div>
-      <div class="space-y-1">${(allBooks||[]).map(b=>`
-        <label class="flex items-center gap-2 text-xs text-stone-700 cursor-pointer">
-          <input type="checkbox" class="accent-forest-700" ${myAssignments.includes(b.id)?'checked':''}
-            onchange="toggleAdminBook('${admin.id}','${b.id}',this.checked)">
-          ${esc(b.name)}
-        </label>`).join('')}
-      </div>
-    </div>`;
-  }).join('');
+  el.innerHTML = `<div class="bg-stone-50 border border-stone-200 rounded-xl p-4 space-y-2">
+    <div class="text-xs font-semibold text-stone-500 mb-2">Bücher zuweisen:</div>
+    ${_ownerBooks.map(b=>`
+      <label class="flex items-center gap-3 cursor-pointer hover:bg-stone-100 rounded-lg px-2 py-1.5 -mx-2 transition-colors">
+        <input type="checkbox" class="accent-forest-700 w-4 h-4" ${myAssignments.includes(b.id)?'checked':''}
+          onchange="toggleAdminBook('${adminId}','${b.id}',this.checked)">
+        <span class="inline-flex items-center gap-1.5 flex-1">
+          <span class="text-xs font-mono font-bold px-1.5 py-0.5 rounded ${b.color||'bg-stone-100 text-stone-600'}">${b.abbr}</span>
+          <span class="text-sm text-stone-700">${esc(b.name)}</span>
+        </span>
+        ${myAssignments.includes(b.id)?'<span class="text-xs text-forest-600 font-semibold">Zugewiesen</span>':''}
+      </label>`).join('')}
+  </div>`;
 }
 
 async function toggleAdminBook(adminId, bookId, assign){
   if(assign){
-    await supa.from('admin_books').upsert({admin_id:adminId, book_id:bookId, assigned_by:currentUser.id});
+    const {error} = await supa.from('admin_books').upsert({admin_id:adminId, book_id:bookId, assigned_by:currentUser.id});
+    if(error){ showToast('Fehler: '+error.message); return; }
+    if(!_ownerAssignments.find(a=>a.admin_id===adminId&&a.book_id===bookId))
+      _ownerAssignments.push({admin_id:adminId, book_id:bookId});
   } else {
-    await supa.from('admin_books').delete().eq('admin_id',adminId).eq('book_id',bookId);
+    const {error} = await supa.from('admin_books').delete().eq('admin_id',adminId).eq('book_id',bookId);
+    if(error){ showToast('Fehler: '+error.message); return; }
+    _ownerAssignments = _ownerAssignments.filter(a=>!(a.admin_id===adminId&&a.book_id===bookId));
   }
   showToast(assign ? 'Buch zugewiesen' : 'Zuweisung entfernt');
+  renderAdminBookCheckboxes();
 }
 
 // ══════ ADMIN: BUCHVERWALTUNG ══════
