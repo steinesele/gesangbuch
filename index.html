@@ -1639,6 +1639,11 @@ async function afterLogin(user){
   activeNavId = ['admin','owner'].includes(dbRole) ? (dbRole==='owner'?'songs':'admin') : 'songs';
   await loadBooksFromSupabase();
   setRole(dbRole);
+  renderBookChips();
+  renderCats();
+  renderAdminBooks();
+  renderEditorList();
+  renderNav();
   document.getElementById('login-overlay').style.display='none';
 }
 
@@ -2191,25 +2196,25 @@ const NAV_CONFIG = {
 let activeNavId = 'songs';
 
 function renderNav(){
-  const tabs = NAV_CONFIG[role] || NAV_CONFIG.user;
-  const el = document.getElementById('nav-tabs');
-  if(!el) return;
-  el.innerHTML = tabs.map(t => {
-    const active = activeNavId === t.id;
-    const paths = t.icon.split(' M ').map((p,i)=>i===0?p:'M '+p);
-    const svgInner = paths.map(p=>`<path d="${p}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
-    return `<button onclick="${t.fn};setActiveNav('${t.id}')"
-      class="flex-1 flex flex-col items-center py-2.5 gap-0.5 ${active?'text-forest-700':'text-stone-400'}">
-      <svg class="w-5 h-5" viewBox="0 0 24 24">${svgInner}</svg>
-      <span class="text-[10px] font-medium">${t.label}</span>
-      ${active?'<div style="width:16px;height:2px;background:#15803d;border-radius:2px;margin-top:1px;"></div>':'<div style="width:16px;height:2px;margin-top:1px;"></div>'}
-    </button>`;
-  }).join('');
-
-  // Update role label in header
-  const roleLabels = {user:'Sänger',editor:'Editor',admin:'Admin',owner:'Owner'};
-  const lbl = document.getElementById('hdr-role-label');
-  if(lbl) lbl.textContent = roleLabels[role]||role;
+  try {
+    const tabs = NAV_CONFIG[role] || NAV_CONFIG.user;
+    const el = document.getElementById('nav-tabs');
+    if(!el) return;
+    el.innerHTML = tabs.map(t => {
+      const active = activeNavId === t.id;
+      const paths = t.icon.split(' M ').map((p,i)=>i===0?p:'M '+p);
+      const svgInner = paths.map(p=>`<path d="${p}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
+      return `<button onclick="${t.fn};setActiveNav('${t.id}')"
+        class="flex-1 flex flex-col items-center py-2.5 gap-0.5 ${active?'text-forest-700':'text-stone-400'}">
+        <svg class="w-5 h-5" viewBox="0 0 24 24">${svgInner}</svg>
+        <span class="text-[10px] font-medium">${t.label}</span>
+        <div style="width:16px;height:2px;${active?'background:#15803d;':''}border-radius:2px;margin-top:1px;"></div>
+      </button>`;
+    }).join('');
+    const roleLabels = {user:'Sänger',editor:'Editor',admin:'Admin',owner:'Owner'};
+    const lbl = document.getElementById('hdr-role-label');
+    if(lbl) lbl.textContent = roleLabels[role]||'Sänger';
+  } catch(e){ console.error('renderNav error:', e); }
 }
 
 function setActiveNav(id){
@@ -2306,8 +2311,7 @@ async function loadBooksFromSupabase(){
 }
 
 // ══════ INIT ══════
-renderBookChips();renderCats();setSort("page");renderEditorList();renderAdminBooks();
-renderNav();
+renderCats();setSort("page");
 initAuth();
 </script>
 </body>
