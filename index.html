@@ -32,7 +32,10 @@ input,textarea,select{font-family:inherit;}
 <script>
 const SUPA_URL = "https://tbrnypembyyfmjtnoeil.supabase.co";
 const SUPA_KEY = "sb_publishable_uHMfy-ADYJAqIaWTmfKO4A_9pLDDEzS";
-const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
+const supa = supabase.createClient(SUPA_URL, SUPA_KEY, {
+  realtime: { params: { eventsPerSecond: 10 } },
+  auth: { storageKey: 'gesangbuch-auth', detectSessionInUrl: false }
+});
 let currentUser = null;
 let currentProfile = null;
 </script>
