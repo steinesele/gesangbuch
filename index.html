@@ -769,11 +769,7 @@ let currentProfile = null;
 <script>
 // ══════ BOOKS & CATEGORIES ══════
 const ALL_BOOK_ID="__ALL__"; // virtual book for unassigned songs – never shown as badge
-const BOOKS=[
-  {id:"JKL",  abbr:"JKL", name:"Joachim Kille Liedgut", color:"bg-forest-100 text-forest-800",  dot:"bg-forest-500",  ring:"ring-forest-500"},
-  {id:"CHOR", abbr:"CHO", name:"Chorbuch Klassik",       color:"bg-blue-100 text-blue-800",      dot:"bg-blue-500",    ring:"ring-blue-500"},
-  {id:"VOLKS",abbr:"VOL", name:"Volksliederbuch",        color:"bg-amber-100 text-amber-800",    dot:"bg-amber-500",   ring:"ring-amber-500"},
-];
+let BOOKS = []; // loaded from Supabase on login
 // Ensure unassigned songs always fall into the virtual ALL book
 function ensureAll(song){ if(!song.books||song.books.length===0) song.books=[ALL_BOOK_ID]; }
 const CATS_LIST=["Alle","Volkslieder","Pop & Rock","Sakral & Gospel","Schlager","Eigene Lieder"];
@@ -1174,18 +1170,25 @@ function onNbNameInput(){
   document.getElementById("nb-abbr").value=abbr;
   document.getElementById("nb-abbr-preview").textContent=abbr||"???";
 }
-function createNewBook(){
+async function createNewBook(){
   const name=document.getElementById("nb-name").value.trim();
   if(!name){showToast("Bitte Namen eingeben");return;}
   const abbr=(document.getElementById("nb-abbr").value.trim().slice(0,3)||name.slice(0,3)).toUpperCase();
   const selected=document.querySelector(".nb-color-btn.ring-2");
-  const colorSet=selected?JSON.parse(selected.dataset.colors):{color:"bg-stone-100 text-stone-800",dot:"bg-stone-500",ring:"ring-stone-500"};
-  if(BOOKS.find(b=>b.id===abbr)){showToast("Kürzel bereits vergeben – bitte ändern");return;}
-  const newBook={id:abbr,abbr,name,...colorSet};
-  BOOKS.push(newBook);
+  const colorSet=selected?JSON.parse(selected.dataset.colors):{color:"bg-forest-100 text-forest-800",dot:"bg-forest-500",ring:"ring-forest-500"};
+  if(BOOKS.find(b=>b.abbr===abbr)){showToast("Kürzel bereits vergeben – bitte ändern");return;}
+  const {data, error} = await supa.from('books').insert({
+    abbr, name,
+    color: colorSet.color,
+    dot: colorSet.dot,
+    ring: colorSet.ring,
+    created_by: currentUser.id
+  }).select().single();
+  if(error){showToast("Fehler: "+error.message);return;}
+  BOOKS.push({...data, id: data.id});
   closeNewBookModal();
   renderBookChips(); renderEditorList(); renderAdminBooks();
-  showToast(`✓ Gesangbuch „${name}" angelegt`);
+  showToast("Gesangbuch angelegt: "+name);
 }
 
 function openNewSongDialog(){
@@ -1194,7 +1197,8 @@ function openNewSongDialog(){
   document.getElementById("new-variant").value="Standard";
   document.getElementById("dup-box").classList.add("hidden");
   // Book checkboxes
-  document.getElementById("new-books-checkboxes").innerHTML=BOOKS.map(b=>`
+  const availBooks = BOOKS.length ? BOOKS : [];
+  document.getElementById("new-books-checkboxes").innerHTML=availBooks.map(b=>`
     <label class="book-check flex items-center gap-3 border border-stone-200 rounded-xl px-3 py-2.5 cursor-pointer hover:border-forest-400 transition-all">
       <input type="checkbox" value="${b.id}" class="new-book-cb accent-forest-700 w-4 h-4" onchange="updateNewPages()">
       <span class="flex items-center gap-2 text-sm font-medium text-stone-700"><span class="w-2 h-2 rounded-full ${b.dot}"></span>${b.name}</span>
@@ -1630,6 +1634,7 @@ async function afterLogin(user){
   }
   // Default nav for role
   activeNavId = ['admin','owner'].includes(dbRole) ? (dbRole==='owner'?'songs':'admin') : 'songs';
+  await loadBooksFromSupabase();
   setRole(dbRole);
   document.getElementById('login-overlay').style.display='none';
 }
@@ -1826,7 +1831,8 @@ function showImportPreview(rows){
   cnt.textContent = rows.length;
   // Render book selector
   const sel = document.getElementById('import-book-select');
-  sel.innerHTML = BOOKS.map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
+  if(!BOOKS.length) await loadBooksFromSupabase();
+  sel.innerHTML = '<option value="">– Buch auswählen –</option>' + BOOKS.map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join('');
   // Preview first 5
   list.innerHTML = rows.slice(0,5).map((r,i) => {
     const title = r['Liedtitel']||r['Title']||r['title']||Object.values(r)[0]||'?';
@@ -2235,6 +2241,24 @@ async function changePassword(){
   document.getElementById('profile-pw-new').value = '';
   document.getElementById('profile-pw-confirm').value = '';
   showToast('Passwort geändert');
+}
+
+
+// ══════ BÜCHER AUS SUPABASE LADEN ══════
+async function loadBooksFromSupabase(){
+  const {data, error} = await supa.from('books').select('*').eq('is_active', true).order('name');
+  if(error){ console.error('Books load error:', error); return; }
+  BOOKS = (data||[]).map(b=>({
+    id: b.id,
+    abbr: b.abbr,
+    name: b.name,
+    color: b.color || 'bg-forest-100 text-forest-800',
+    dot: b.dot || 'bg-forest-500',
+    ring: b.ring || 'ring-forest-500',
+    is_locked: b.is_locked || false,
+  }));
+  renderBookChips();
+  renderAdminBooks();
 }
 
 // ══════ INIT ══════
