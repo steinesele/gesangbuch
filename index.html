@@ -1825,13 +1825,13 @@ function handleXlsxUpload(input){
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
       xlsxRows = rows;
-      showImportPreview(rows);
+      showImportPreview(rows);  // async, runs independently
     } catch(err) { showToast('Fehler beim Lesen der Datei: '+err.message); }
   };
   reader.readAsArrayBuffer(file);
 }
 
-function showImportPreview(rows){
+async function showImportPreview(rows){
   const el = document.getElementById('import-preview');
   const list = document.getElementById('import-preview-list');
   const cnt = document.getElementById('import-count');
