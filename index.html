@@ -110,7 +110,7 @@ tailwind.config = {
   <div class="screen active" id="screen-songs">
     <!-- Book filter -->
     <div style="padding:12px 16px 0;flex-shrink:0;">
-      <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:10px;scrollbar-width:none;" id="book-chips"></div>
+      <div style="display:flex;gap:6px;overflow-x:auto;padding:0 0 8px;scrollbar-width:none;-webkit-overflow-scrolling:touch;" id="book-chips"></div>
     </div>
     <!-- Search + sort -->
     <div style="padding:0 16px 10px;flex-shrink:0;">
@@ -706,13 +706,26 @@ async function initAuth() {
 // DATA LOADING
 // ═══════════════════════════════════════════════════════
 async function loadBooks() {
+  // Admin/Owner/Editor see all active books
+  // Users see only books they have access to + standard book
   const { data } = await supa.from('books').select('*').eq('is_active', true).order('name');
-  BOOKS = (data || []).map(b => ({
+  const allBooks = (data || []).map(b => ({
     id: b.id, abbr: b.abbr, name: b.name,
     color: b.color || 'bg-stone-100 text-stone-800',
     dot: b.dot || 'bg-stone-500',
     is_locked: b.is_locked || false,
   }));
+  if (['admin','owner','editor'].includes(role)) {
+    BOOKS = allBooks;
+  } else {
+    // Get accessible book IDs for this user
+    const { data: access } = await supa.from('user_book_access').select('book_id').eq('user_id', currentUser?.id);
+    const accessIds = (access || []).map(r => r.book_id);
+    // Also include standard book from settings
+    const stdId = settingsCache['standard_book_id'] || '';
+    const allowedIds = [...new Set([...accessIds, stdId].filter(Boolean))];
+    BOOKS = allBooks.filter(b => allowedIds.includes(b.id));
+  }
   renderBookChips();
 }
 
@@ -748,13 +761,36 @@ function renderBookChips() {
   const el = document.getElementById('book-chips');
   if (!el) return;
   const allC = activeBook === 'all';
-  let html = `<span class="chip ${allC ? 'active' : ''}" style="background:${allC ? '#f0fdf4' : '#fff'};color:${allC ? '#15803d' : '#57534e'};border-color:${allC ? '#86efac' : '#e7e5e4'};" onclick="filterBook('all')">Alle</span>`;
+  // "Alle" chip
+  let html = `<span class="chip ${allC ? 'active' : ''}" title="Alle Bücher"
+    style="background:${allC?'#f0fdf4':'#fff'};color:${allC?'#15803d':'#78716c'};border-color:${allC?'#86efac':'#e7e5e4'};font-size:11px;font-weight:700;padding:5px 10px;"
+    onclick="filterBook('all')">Alle</span>`;
   BOOKS.forEach(b => {
     const c = bookColor(b);
     const isA = activeBook === b.id;
-    html += `<span class="chip ${isA ? 'active' : ''}" style="background:${c.bg};color:${c.text};border-color:${c.border};" onclick="filterBook('${b.id}')">${b.abbr} ${b.name}${b.is_locked ? ' 🔒' : ''}</span>`;
+    const abbr = b.abbr.slice(0,3).toUpperCase();
+    html += `<span class="chip ${isA?'active':''}" title="${b.name}${b.is_locked?' (gesperrt)':''}"
+      style="background:${c.bg};color:${c.text};border-color:${isA?c.text:c.border};font-size:11px;font-weight:700;padding:5px 10px;font-family:monospace;letter-spacing:.03em;min-width:36px;text-align:center;position:relative;"
+      onclick="filterBook('${b.id}');showBookTooltip(this,'${b.name.replace(/'/g,"\'")}')"
+      >${abbr}${b.is_locked?'🔒':''}</span>`;
   });
   el.innerHTML = html;
+}
+
+let tooltipTimer;
+function showBookTooltip(el, name) {
+  clearTimeout(tooltipTimer);
+  // Remove existing tooltip
+  document.querySelectorAll('.book-tooltip').forEach(t => t.remove());
+  const tip = document.createElement('div');
+  tip.className = 'book-tooltip';
+  tip.textContent = name;
+  tip.style.cssText = 'position:fixed;background:#1c1917;color:#fff;padding:5px 10px;border-radius:8px;font-size:12px;font-weight:500;z-index:9999;pointer-events:none;white-space:nowrap;';
+  document.body.appendChild(tip);
+  const rect = el.getBoundingClientRect();
+  tip.style.left = Math.min(rect.left, window.innerWidth - tip.offsetWidth - 8) + 'px';
+  tip.style.top = (rect.bottom + 6) + 'px';
+  tooltipTimer = setTimeout(() => tip.remove(), 2000);
 }
 
 function filterBook(id) { activeBook = id; renderBookChips(); renderSongs(); }
