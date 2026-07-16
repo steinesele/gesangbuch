@@ -366,7 +366,7 @@ let currentProfile = null;
       <span class="text-xs text-forest-700 font-semibold">Aktiv</span>
     </div>
     <div class="mt-8 pt-6 border-t border-stone-100 flex flex-col gap-2">
-      <button onclick="showTab('impressum');loadImpressum()" class="text-xs text-stone-400 hover:text-stone-600 text-left">Impressum & Datenschutz</button>
+      <button onclick="goScreen('impressum');loadImpressum()" class="text-xs text-stone-400 hover:text-stone-600 text-left">Impressum & Datenschutz</button>
     </div>
   </div>
 </div>
@@ -768,12 +768,8 @@ function showTab(name){
 // ══════ ROLE ══════
 function setRole(r){
   role=r;
-  document.getElementById("role-select").value=r;
-  document.getElementById("nav-editor").classList.toggle("hidden", !["editor","admin","owner"].includes(r));
-  document.getElementById("nav-admin").classList.toggle("hidden",  !["admin","owner"].includes(r));
-  const eb=document.getElementById("edit-from-reader");
-  eb.classList.toggle("hidden", role==="user");
-  eb.classList.toggle("flex",   role!=="user");
+  const sel=document.getElementById("role-select");
+  if(sel&&sel.value!==r) sel.value=r;
   updateNavForRole();
   renderSongs();
   renderEditorList();
@@ -1464,11 +1460,16 @@ async function doLogout(){
 
 async function afterLogin(user){
   currentUser=user;
-  const {data:profile}=await supa.from('profiles').select('*').eq('id',user.id).single();
+  // Retry up to 3x – trigger may not have created profile yet
+  let profile=null;
+  for(let i=0;i<3;i++){
+    const {data}=await supa.from('profiles').select('*').eq('id',user.id).single();
+    if(data){profile=data;break;}
+    await new Promise(r=>setTimeout(r,800));
+  }
   currentProfile=profile;
-  // Set role from DB, fall back to 'user'
   const dbRole=(profile&&profile.role)||'user';
-  // Only show admin/editor options if DB role allows
+  // Stacked roles: owner > admin > editor > user
   const sel=document.getElementById('role-select');
   sel.innerHTML='<option value="user">Saenger</option>';
   if(['editor','admin','owner'].includes(dbRole)) sel.innerHTML+='<option value="editor">Editor</option>';
@@ -1500,10 +1501,23 @@ async function initAuth(){
 // ══════ ROLE VISIBILITY ══════
 function updateNavForRole(){
   const r = role;
-  document.getElementById('nav-users').classList.toggle('hidden', !['admin','owner'].includes(r));
-  document.getElementById('nav-settings').classList.toggle('hidden', r !== 'owner');
-  document.getElementById('nav-admin-btn').classList.toggle('hidden', !['admin','owner'].includes(r));
-  document.getElementById('nav-editor').classList.toggle('hidden', !['editor','admin','owner'].includes(r));
+  // Stacked: owner>admin>editor>user
+  const isEditor  = ['editor','admin','owner'].includes(r);
+  const isAdmin   = ['admin','owner'].includes(r);
+  const isOwner   = r === 'owner';
+  document.getElementById('nav-editor').classList.toggle('hidden', !isEditor);
+  document.getElementById('nav-admin-btn').classList.toggle('hidden', !isAdmin);
+  document.getElementById('nav-users').classList.toggle('hidden', !isAdmin);
+  document.getElementById('nav-settings').classList.toggle('hidden', !isOwner);
+  // Show edit button in reader for editor+
+  const eb=document.getElementById('edit-from-reader');
+  if(eb){ eb.classList.toggle('hidden',!isEditor); eb.classList.toggle('flex',isEditor); }
+  // Admin-only delete mode button
+  const delBtn=document.getElementById('btn-toggle-delete');
+  if(delBtn) delBtn.classList.toggle('hidden', !isAdmin);
+  // Admin-only new book button
+  const bookBtn=document.getElementById('btn-new-book');
+  if(bookBtn) bookBtn.classList.toggle('hidden', !isAdmin);
 }
 
 // ══════ NUTZERVERWALTUNG ══════
