@@ -1482,16 +1482,31 @@ async function afterLogin(user){
 
 // Check existing session on load
 async function initAuth(){
-  document.getElementById('login-overlay').style.display='flex';
-  document.getElementById('login-loading').style.display='block';
-  document.getElementById('login-form').style.display='none';
-  const {data:{session}}=await supa.auth.getSession();
-  if(session){
-    await afterLogin(session.user);
-  } else {
+  try {
+    document.getElementById('login-overlay').style.display='flex';
+    document.getElementById('login-loading').style.display='block';
+    document.getElementById('login-form').style.display='none';
+
+    // Timeout after 8 seconds to avoid infinite loading
+    const sessionResult = await Promise.race([
+      supa.auth.getSession(),
+      new Promise((_,reject)=>setTimeout(()=>reject(new Error('timeout')),8000))
+    ]).catch(e=>({data:{session:null},error:e}));
+
+    const session = sessionResult?.data?.session;
+    if(session){
+      await afterLogin(session.user);
+    } else {
+      document.getElementById('login-loading').style.display='none';
+      document.getElementById('login-form').style.display='block';
+    }
+  } catch(e) {
+    console.error('initAuth error:', e);
     document.getElementById('login-loading').style.display='none';
     document.getElementById('login-form').style.display='block';
+    setLoginError('Verbindungsfehler. Bitte Seite neu laden.');
   }
+
   supa.auth.onAuthStateChange(async(_event,session)=>{
     if(!session&&currentUser){ doLogout(); }
   });
@@ -1501,23 +1516,19 @@ async function initAuth(){
 // ══════ ROLE VISIBILITY ══════
 function updateNavForRole(){
   const r = role;
-  // Stacked: owner>admin>editor>user
-  const isEditor  = ['editor','admin','owner'].includes(r);
-  const isAdmin   = ['admin','owner'].includes(r);
-  const isOwner   = r === 'owner';
-  document.getElementById('nav-editor').classList.toggle('hidden', !isEditor);
-  document.getElementById('nav-admin-btn').classList.toggle('hidden', !isAdmin);
-  document.getElementById('nav-users').classList.toggle('hidden', !isAdmin);
-  document.getElementById('nav-settings').classList.toggle('hidden', !isOwner);
-  // Show edit button in reader for editor+
-  const eb=document.getElementById('edit-from-reader');
-  if(eb){ eb.classList.toggle('hidden',!isEditor); eb.classList.toggle('flex',isEditor); }
-  // Admin-only delete mode button
-  const delBtn=document.getElementById('btn-toggle-delete');
-  if(delBtn) delBtn.classList.toggle('hidden', !isAdmin);
-  // Admin-only new book button
-  const bookBtn=document.getElementById('btn-new-book');
-  if(bookBtn) bookBtn.classList.toggle('hidden', !isAdmin);
+  const isEditor = ['editor','admin','owner'].includes(r);
+  const isAdmin  = ['admin','owner'].includes(r);
+  const isOwner  = r === 'owner';
+  // Helper: safe toggle – skips if element doesn't exist
+  const tog = (id, hidden) => { const el=document.getElementById(id); if(el) el.classList.toggle('hidden', hidden); };
+  const togFlex = (id, show) => { const el=document.getElementById(id); if(el){ el.classList.toggle('hidden',!show); el.classList.toggle('flex',show); } };
+  tog('nav-editor',       !isEditor);
+  tog('nav-admin-btn',    !isAdmin);
+  tog('nav-users',        !isAdmin);
+  tog('nav-settings',     !isOwner);
+  togFlex('edit-from-reader', isEditor);
+  tog('btn-toggle-delete',!isAdmin);
+  tog('btn-new-book',     !isAdmin);
 }
 
 // ══════ NUTZERVERWALTUNG ══════
