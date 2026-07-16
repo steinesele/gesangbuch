@@ -1623,7 +1623,8 @@ async function loadUsers(){
   if(badge) badge.textContent = role==='owner' ? 'Owner' : 'Admin';
   const el = document.getElementById('users-list');
   el.innerHTML = '<div class="px-6 py-8 text-center text-stone-400 text-sm">Lade Nutzer...</div>';
-  const {data, error} = await supa.from('profiles').select('*').order('created_at');
+  // Use RPC to bypass RLS restriction on reading other profiles
+  const {data, error} = await supa.rpc('get_all_profiles');
   if(error){ el.innerHTML='<div class="px-6 py-8 text-center text-red-500 text-sm">Fehler: '+error.message+'</div>'; return; }
   const ROLES = role==='owner'
     ? [{v:'user',l:'Sänger'},{v:'editor',l:'Editor'},{v:'admin',l:'Admin'},{v:'owner',l:'Owner'}]
@@ -1669,7 +1670,10 @@ async function loadSettings(){
   setVal('set-imp-ort','impressum_ort');
   setVal('set-imp-email','impressum_email');
   setVal('set-imp-telefon','impressum_telefon');
-  await loadOwnerAssignments();
+  // Load books fresh for standard book selector
+  if(role==='owner'){
+    await loadOwnerAssignments();
+  }
 }
 
 async function saveSettings(){
@@ -1819,14 +1823,15 @@ async function runXlsxImport(){
 // ══════ OWNER: BUCH-ZUWEISUNG AN ADMINS ══════
 async function loadOwnerAssignments(){
   if(role!=='owner') return;
-  // Load all admins
-  const {data:admins} = await supa.from('profiles').select('*').in('role',['admin','owner']).order('full_name');
-  // Load all books
+  // Use RPC to get all profiles (bypasses RLS)
+  const {data:allProfiles} = await supa.rpc('get_all_profiles');
+  const admins = (allProfiles||[]).filter(p=>['admin','owner'].includes(p.role));
+  // Load all books fresh from DB
   const {data:allBooks} = await supa.from('books').select('*').order('name');
   // Load existing assignments
   const {data:assignments} = await supa.from('admin_books').select('*');
 
-  // Populate standard book selector
+  // Populate standard book selector from fresh DB data
   const stdSel = document.getElementById('set-standard-book');
   if(stdSel){
     stdSel.innerHTML = '<option value="">– Kein Standardbuch –</option>'
@@ -1914,8 +1919,8 @@ async function loadAdminBooks(){
     if(sel) sel.innerHTML='<option value="">– Buch auswählen –</option>'+bookOpts;
   });
 
-  // Load all non-admin users for selects
-  const {data:users} = await supa.from('profiles').select('*').order('full_name');
+  // Use RPC to get all users (bypasses RLS)
+  const {data:users} = await supa.rpc('get_all_profiles');
   const userOpts = (users||[]).filter(u=>u.id!==currentUser.id)
     .map(u=>`<option value="${u.id}">${esc(u.full_name||u.email||u.id)} (${u.role})</option>`).join('');
   ['ab-editor-select','ab-user-select'].forEach(id=>{
