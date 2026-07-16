@@ -36,6 +36,7 @@ const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
 let currentUser = null;
 let currentProfile = null;
 </script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <body class="bg-stone-100">
 <div id="login-overlay" style="position:fixed;inset:0;z-index:200;background:#fafaf9;display:flex;align-items:center;justify-content:center;">
   <div style="width:100%;max-width:360px;padding:32px 24px;">
@@ -161,6 +162,14 @@ let currentProfile = null;
       <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
       <span class="text-[10px] font-medium">Zugang</span>
     </button>
+    <button onclick="showTab('users')" class="flex-1 flex flex-col items-center py-2.5 gap-1 text-stone-400 hidden" id="nav-users">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+      <span class="text-[10px] font-medium">Nutzer</span>
+    </button>
+    <button onclick="showTab('settings')" class="flex-1 flex flex-col items-center py-2.5 gap-1 text-stone-400 hidden" id="nav-settings">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      <span class="text-[10px] font-medium">Einstellungen</span>
+    </button>
   </nav>
 </div>
 
@@ -285,7 +294,17 @@ let currentProfile = null;
   <div class="scroll">
     <div class="px-4 py-4 border-b border-stone-100">
       <div class="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-3">KI-Textimport</div>
-      <div onclick="simulateUpload()" class="border-2 border-dashed border-stone-300 rounded-2xl p-5 text-center cursor-pointer hover:border-forest-500 hover:bg-forest-50 transition-colors">
+      <div class="flex gap-2 mb-3">
+        <div onclick="goScreen('import')" class="flex-1 border border-stone-200 rounded-xl p-3 text-center cursor-pointer hover:bg-forest-50 hover:border-forest-400 transition-colors">
+          <div class="text-2xl mb-1">📊</div>
+          <div class="text-xs font-semibold text-stone-700">Excel importieren</div>
+        </div>
+        <div onclick="simulateUpload()" class="flex-1 border border-stone-200 rounded-xl p-3 text-center cursor-pointer hover:bg-stone-50 transition-colors">
+          <div class="text-2xl mb-1">📷</div>
+          <div class="text-xs font-semibold text-stone-700">Foto / CSV</div>
+        </div>
+      </div>
+      <div onclick="simulateUpload()" class="hidden border-2 border-dashed border-stone-300 rounded-2xl p-5 text-center cursor-pointer hover:border-forest-500 hover:bg-forest-50 transition-colors">
         <div class="text-3xl mb-2">📷</div>
         <div class="text-sm font-semibold text-stone-700">Foto oder CSV hochladen</div>
         <div class="text-xs text-stone-400 mt-1">Foto vom Inhaltsverzeichnis · CSV-Datei</div>
@@ -345,6 +364,9 @@ let currentProfile = null;
       <div class="w-2 h-2 rounded-full bg-forest-500"></div>
       <div class="flex-1 text-sm font-medium text-stone-800">Joachim Kille Liedgut</div>
       <span class="text-xs text-forest-700 font-semibold">Aktiv</span>
+    </div>
+    <div class="mt-8 pt-6 border-t border-stone-100 flex flex-col gap-2">
+      <button onclick="showTab('impressum');loadImpressum()" class="text-xs text-stone-400 hover:text-stone-600 text-left">Impressum & Datenschutz</button>
     </div>
   </div>
 </div>
@@ -409,6 +431,141 @@ let currentProfile = null;
   </div>
 </div>
 
+
+<!-- ═══════════ SCREEN: NUTZERVERWALTUNG ═══════════ -->
+<div class="screen" id="screen-users">
+  <div class="bg-white border-b border-stone-200 px-4 py-3 flex items-center gap-3 flex-shrink-0">
+    <button onclick="goBack('songs')" class="w-8 h-8 rounded-lg border border-stone-200 flex items-center justify-center text-stone-600 hover:bg-stone-50">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+    </button>
+    <div>
+      <div class="flex items-center gap-2">
+        <span class="font-semibold text-stone-900">Nutzerverwaltung</span>
+        <span class="text-xs font-semibold bg-red-50 text-red-700 px-2 py-0.5 rounded-full" id="users-role-badge">Admin</span>
+      </div>
+      <div class="text-xs text-stone-400">Rollen zuweisen</div>
+    </div>
+    <button onclick="loadUsers()" class="ml-auto text-xs text-forest-700 font-semibold hover:underline">Aktualisieren</button>
+  </div>
+  <div class="scroll" id="users-list">
+    <div class="px-6 py-12 text-center text-stone-400 text-sm">Lade Nutzer...</div>
+  </div>
+</div>
+
+<!-- ═══════════ SCREEN: EINSTELLUNGEN ═══════════ -->
+<div class="screen" id="screen-settings">
+  <div class="bg-white border-b border-stone-200 px-4 py-3 flex items-center gap-3 flex-shrink-0">
+    <button onclick="goBack('songs')" class="w-8 h-8 rounded-lg border border-stone-200 flex items-center justify-center text-stone-600 hover:bg-stone-50">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+    </button>
+    <div>
+      <div class="font-semibold text-stone-900">Einstellungen</div>
+      <div class="text-xs text-stone-400">Impressum & Datenschutz</div>
+    </div>
+    <button onclick="saveSettings()" class="ml-auto px-3 py-1.5 rounded-lg bg-forest-700 text-white text-xs font-semibold hover:bg-forest-800">Speichern</button>
+  </div>
+  <div class="scroll px-4 py-4 space-y-5">
+
+    <div>
+      <div class="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-3">App-Informationen</div>
+      <div class="space-y-3">
+        <div>
+          <label class="text-xs font-semibold text-stone-500 block mb-1.5">App-Name</label>
+          <input type="text" id="set-app-name" class="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-forest-600 text-stone-800">
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-stone-500 block mb-1.5">Beschreibung</label>
+          <textarea id="set-app-beschreibung" rows="2" class="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-forest-600 text-stone-800"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-3">Impressum (Pflichtangaben)</div>
+      <div class="space-y-3">
+        <div>
+          <label class="text-xs font-semibold text-stone-500 block mb-1.5">Name *</label>
+          <input type="text" id="set-imp-name" placeholder="Vorname Nachname" class="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-forest-600 text-stone-800">
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-stone-500 block mb-1.5">Straße & Hausnummer *</label>
+          <input type="text" id="set-imp-strasse" placeholder="Musterstraße 1" class="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-forest-600 text-stone-800">
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-stone-500 block mb-1.5">PLZ & Ort *</label>
+          <input type="text" id="set-imp-ort" placeholder="12345 Musterstadt" class="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-forest-600 text-stone-800">
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-stone-500 block mb-1.5">E-Mail *</label>
+          <input type="email" id="set-imp-email" placeholder="kontakt@beispiel.de" class="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-forest-600 text-stone-800">
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-stone-500 block mb-1.5">Telefon (optional)</label>
+          <input type="tel" id="set-imp-telefon" placeholder="+49 123 456789" class="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-forest-600 text-stone-800">
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 leading-relaxed">
+      Das Impressum wird in der App öffentlich angezeigt. Als Privatperson bist du nach § 5 TMG zur Angabe verpflichtet wenn du Dienste kommerziell anbietest. Bei rein privatem/vereinsinternem Gebrauch ohne Entgelt entfällt die Pflicht.
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════ SCREEN: IMPRESSUM ═══════════ -->
+<div class="screen" id="screen-impressum">
+  <div class="bg-white border-b border-stone-200 px-4 py-3 flex items-center gap-3 flex-shrink-0">
+    <button onclick="goBack('songs')" class="w-8 h-8 rounded-lg border border-stone-200 flex items-center justify-center text-stone-600 hover:bg-stone-50">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+    </button>
+    <div class="font-semibold text-stone-900">Impressum & Datenschutz</div>
+  </div>
+  <div class="scroll px-5 py-6 space-y-6" id="impressum-body">
+    <div class="text-sm text-stone-400">Wird geladen...</div>
+  </div>
+</div>
+
+<!-- ═══════════ SCREEN: EXCEL-IMPORT ═══════════ -->
+<div class="screen" id="screen-import">
+  <div class="bg-white border-b border-stone-200 px-4 py-3 flex items-center gap-3 flex-shrink-0">
+    <button onclick="goBack('admin')" class="w-8 h-8 rounded-lg border border-stone-200 flex items-center justify-center text-stone-600 hover:bg-stone-50">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+    </button>
+    <div>
+      <div class="font-semibold text-stone-900">Excel-Import</div>
+      <div class="text-xs text-stone-400">Lieder aus Tabelle importieren</div>
+    </div>
+  </div>
+  <div class="scroll px-4 py-4 space-y-4">
+    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-800 leading-relaxed">
+      Erwartete Spalten: <b>Liedtitel</b>, <b>Seitenzahl(en)</b>, <b>Vollständiger Text</b>, <b>Kategorie</b>, <b>Buch</b>. Die erste Zeile wird als Kopfzeile behandelt.
+    </div>
+    <div>
+      <label class="text-xs font-semibold text-stone-500 uppercase tracking-wide block mb-2">Excel-Datei (.xlsx)</label>
+      <div onclick="document.getElementById('xlsx-input').click()" class="border-2 border-dashed border-stone-300 rounded-2xl p-6 text-center cursor-pointer hover:border-forest-500 hover:bg-forest-50 transition-colors">
+        <div class="text-3xl mb-2">📊</div>
+        <div class="text-sm font-semibold text-stone-700">Excel-Datei auswählen</div>
+        <div class="text-xs text-stone-400 mt-1">.xlsx Datei</div>
+      </div>
+      <input type="file" id="xlsx-input" accept=".xlsx" class="hidden" onchange="handleXlsxUpload(this)">
+    </div>
+    <div id="import-preview" class="hidden">
+      <div class="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-2">Vorschau (<span id="import-count">0</span> Lieder erkannt)</div>
+      <div id="import-preview-list" class="space-y-1.5 max-h-48 overflow-y-auto"></div>
+      <div class="mt-4 space-y-3">
+        <div>
+          <label class="text-xs font-semibold text-stone-500 block mb-1.5">Gesangbuch zuordnen</label>
+          <select id="import-book-select" class="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-forest-600 text-stone-800"></select>
+        </div>
+      </div>
+      <button onclick="runXlsxImport()" class="mt-4 w-full py-3 rounded-xl bg-forest-700 text-white text-sm font-semibold hover:bg-forest-800">
+        Alle Lieder importieren
+      </button>
+    </div>
+    <div id="import-result" class="hidden bg-forest-50 border border-forest-200 rounded-xl p-4 text-sm text-forest-800"></div>
+  </div>
+</div>
 <!-- Modal: New Book (Admin only) -->
 <div class="modal-bg hidden" id="modal-new-book">
   <div class="modal-card">
@@ -600,17 +757,24 @@ function bbadge(id){if(id===ALL_BOOK_ID)return '';return `<span class="inline-fl
 function goScreen(id){document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));document.getElementById("screen-"+id).classList.add("active");}
 function goBack(to){stopScroll();goScreen(to);}
 function goEditorBack(){goScreen(editorReturnScreen);if(editorReturnScreen==="editor-list")renderEditorList();}
-function showTab(name){if(name==="editor-list")renderEditorList();if(name==="admin")renderAdminBooks();goScreen(name);}
+function showTab(name){
+  if(name==="editor-list") renderEditorList();
+  if(name==="admin") renderAdminBooks();
+  if(name==="users") loadUsers();
+  if(name==="settings") loadSettings();
+  goScreen(name);
+}
 
 // ══════ ROLE ══════
 function setRole(r){
   role=r;
   document.getElementById("role-select").value=r;
-  document.getElementById("nav-editor").classList.toggle("hidden", role!=="editor");
-  document.getElementById("nav-admin").classList.toggle("hidden",  role!=="admin");
+  document.getElementById("nav-editor").classList.toggle("hidden", !["editor","admin","owner"].includes(r));
+  document.getElementById("nav-admin").classList.toggle("hidden",  !["admin","owner"].includes(r));
   const eb=document.getElementById("edit-from-reader");
   eb.classList.toggle("hidden", role==="user");
   eb.classList.toggle("flex",   role!=="user");
+  updateNavForRole();
   renderSongs();
   renderEditorList();
   showToast("Ansicht: "+(r==="admin"?"Admin":r==="editor"?"Editor":"Sänger"));
@@ -1307,8 +1471,9 @@ async function afterLogin(user){
   // Only show admin/editor options if DB role allows
   const sel=document.getElementById('role-select');
   sel.innerHTML='<option value="user">Saenger</option>';
-  if(dbRole==='editor'||dbRole==='admin') sel.innerHTML+='<option value="editor">Editor</option>';
-  if(dbRole==='admin') sel.innerHTML+='<option value="admin">Admin</option>';
+  if(['editor','admin','owner'].includes(dbRole)) sel.innerHTML+='<option value="editor">Editor</option>';
+  if(['admin','owner'].includes(dbRole)) sel.innerHTML+='<option value="admin">Admin</option>';
+  if(dbRole==='owner') sel.innerHTML+='<option value="owner">Owner</option>';
   sel.value=dbRole;
   setRole(dbRole);
   document.getElementById('login-overlay').style.display='none';
@@ -1329,6 +1494,213 @@ async function initAuth(){
   supa.auth.onAuthStateChange(async(_event,session)=>{
     if(!session&&currentUser){ doLogout(); }
   });
+}
+
+
+// ══════ ROLE VISIBILITY ══════
+function updateNavForRole(){
+  const r = role;
+  document.getElementById('nav-users').classList.toggle('hidden', !['admin','owner'].includes(r));
+  document.getElementById('nav-settings').classList.toggle('hidden', r !== 'owner');
+  document.getElementById('nav-admin-btn').classList.toggle('hidden', !['admin','owner'].includes(r));
+  document.getElementById('nav-editor').classList.toggle('hidden', !['editor','admin','owner'].includes(r));
+}
+
+// ══════ NUTZERVERWALTUNG ══════
+async function loadUsers(){
+  if(!['admin','owner'].includes(role)) return;
+  const badge = document.getElementById('users-role-badge');
+  if(badge) badge.textContent = role==='owner' ? 'Owner' : 'Admin';
+  const el = document.getElementById('users-list');
+  el.innerHTML = '<div class="px-6 py-8 text-center text-stone-400 text-sm">Lade Nutzer...</div>';
+  const {data, error} = await supa.from('profiles').select('*').order('created_at');
+  if(error){ el.innerHTML='<div class="px-6 py-8 text-center text-red-500 text-sm">Fehler: '+error.message+'</div>'; return; }
+  const ROLES = role==='owner'
+    ? [{v:'user',l:'Sänger'},{v:'editor',l:'Editor'},{v:'admin',l:'Admin'},{v:'owner',l:'Owner'}]
+    : [{v:'user',l:'Sänger'},{v:'editor',l:'Editor'},{v:'admin',l:'Admin'}];
+  el.innerHTML = (data||[]).map(u => {
+    const isMe = u.id === currentUser?.id;
+    const canEdit = role==='owner' || (role==='admin' && u.role!=='owner');
+    const opts = ROLES.map(r2=>`<option value="${r2.v}" ${u.role===r2.v?'selected':''}>${r2.l}</option>`).join('');
+    return `<div class="flex items-center gap-3 px-4 py-3.5 border-b border-stone-100 last:border-0">
+      <div class="w-9 h-9 rounded-full bg-forest-100 flex items-center justify-center text-forest-800 text-xs font-bold flex-shrink-0">
+        ${(u.full_name||u.email||'?').slice(0,2).toUpperCase()}
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="font-semibold text-stone-900 text-sm truncate">${esc(u.full_name||'–')}</div>
+        <div class="text-xs text-stone-400 truncate">${esc(u.email||'')}</div>
+      </div>
+      ${canEdit && !isMe ? `<select onchange="changeUserRole('${u.id}',this.value)" class="text-xs border border-stone-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-forest-600">${opts}</select>` : `<span class="text-xs font-semibold px-2 py-1 rounded-lg ${u.role==='owner'?'bg-violet-100 text-violet-700':u.role==='admin'?'bg-red-100 text-red-700':u.role==='editor'?'bg-blue-100 text-blue-700':'bg-stone-100 text-stone-600'}">${ROLES.find(r2=>r2.v===u.role)?.l||u.role}</span>`}
+    </div>`;
+  }).join('') || '<div class="px-6 py-8 text-center text-stone-400 text-sm">Keine Nutzer gefunden.</div>';
+}
+
+async function changeUserRole(userId, newRole){
+  if(!['admin','owner'].includes(role)){ showToast('Keine Berechtigung'); return; }
+  const {error} = await supa.from('profiles').update({role:newRole}).eq('id',userId);
+  if(error){ showToast('Fehler: '+error.message); return; }
+  showToast('Rolle aktualisiert');
+  loadUsers();
+}
+
+// ══════ EINSTELLUNGEN (Owner) ══════
+let settingsCache = {};
+
+async function loadSettings(){
+  const {data} = await supa.from('app_settings').select('*');
+  if(!data) return;
+  data.forEach(row => { settingsCache[row.key] = row.value; });
+  const g = k => settingsCache[k]||'';
+  const setVal = (id,k) => { const el=document.getElementById(id); if(el) el.value=g(k); };
+  setVal('set-app-name','app_name');
+  setVal('set-app-beschreibung','app_beschreibung');
+  setVal('set-imp-name','impressum_name');
+  setVal('set-imp-strasse','impressum_strasse');
+  setVal('set-imp-ort','impressum_ort');
+  setVal('set-imp-email','impressum_email');
+  setVal('set-imp-telefon','impressum_telefon');
+}
+
+async function saveSettings(){
+  if(role!=='owner'){ showToast('Nur Owner kann Einstellungen speichern'); return; }
+  const updates = [
+    {key:'app_name', value:document.getElementById('set-app-name')?.value||''},
+    {key:'app_beschreibung', value:document.getElementById('set-app-beschreibung')?.value||''},
+    {key:'impressum_name', value:document.getElementById('set-imp-name')?.value||''},
+    {key:'impressum_strasse', value:document.getElementById('set-imp-strasse')?.value||''},
+    {key:'impressum_ort', value:document.getElementById('set-imp-ort')?.value||''},
+    {key:'impressum_email', value:document.getElementById('set-imp-email')?.value||''},
+    {key:'impressum_telefon', value:document.getElementById('set-imp-telefon')?.value||''},
+  ];
+  for(const u of updates){
+    await supa.from('app_settings').upsert({key:u.key, value:u.value, updated_by:currentUser.id, updated_at:new Date().toISOString()});
+    settingsCache[u.key] = u.value;
+  }
+  showToast('Einstellungen gespeichert');
+}
+
+// ══════ IMPRESSUM ══════
+async function loadImpressum(){
+  const {data} = await supa.from('app_settings').select('*');
+  const s = {};
+  (data||[]).forEach(r => s[r.key]=r.value);
+  const g = k => esc(s[k]||'');
+  const now = new Date().getFullYear();
+  document.getElementById('impressum-body').innerHTML = `
+    <div>
+      <h2 style="font-size:18px;font-weight:700;color:#1c1917;margin-bottom:16px;">Impressum</h2>
+      <div style="font-size:14px;color:#44403c;line-height:1.7;">
+        <p style="margin-bottom:4px;font-weight:600;">Angaben gemäß § 5 TMG</p>
+        <p>${g('impressum_name')}</p>
+        <p>${g('impressum_strasse')}</p>
+        <p>${g('impressum_ort')}</p>
+        <p style="margin-top:12px;font-weight:600;">Kontakt</p>
+        <p>E-Mail: ${g('impressum_email')}${s['impressum_telefon']?'<br>Tel.: '+g('impressum_telefon'):''}</p>
+        <p style="margin-top:12px;font-size:12px;color:#78716c;">Diese App wird als privates, nicht-kommerzielles Projekt betrieben und dient ausschließlich der vereinsinternen Nutzung.</p>
+      </div>
+    </div>
+    <div>
+      <h2 style="font-size:18px;font-weight:700;color:#1c1917;margin-bottom:16px;">Datenschutzerklärung</h2>
+      <div style="font-size:14px;color:#44403c;line-height:1.7;space-y:12px;">
+        <p style="font-weight:600;margin-bottom:8px;">1. Verantwortlicher</p>
+        <p>${g('impressum_name')}, ${g('impressum_strasse')}, ${g('impressum_ort')}, ${g('impressum_email')}</p>
+        <p style="font-weight:600;margin:16px 0 8px;">2. Welche Daten wir verarbeiten</p>
+        <p>Zur Nutzung der App ist eine Registrierung mit E-Mail-Adresse und Passwort erforderlich. Diese Daten werden ausschließlich zur Authentifizierung verwendet.</p>
+        <p style="font-weight:600;margin:16px 0 8px;">3. Auftragsverarbeiter</p>
+        <p>Die App verwendet Supabase (Supabase Inc., San Francisco, USA) als Backend-Dienst. Die Daten werden auf Servern in der EU (Frankfurt) gespeichert. Es besteht ein Data Processing Agreement gemäß Art. 28 DSGVO.</p>
+        <p style="font-weight:600;margin:16px 0 8px;">4. Deine Rechte</p>
+        <p>Du hast das Recht auf Auskunft, Berichtigung, Löschung und Einschränkung der Verarbeitung deiner Daten. Kontakt: ${g('impressum_email')}</p>
+        <p style="font-weight:600;margin:16px 0 8px;">5. Cookies</p>
+        <p>Die App verwendet ausschließlich technisch notwendige Session-Cookies für die Authentifizierung. Es werden keine Tracking- oder Analyse-Cookies gesetzt.</p>
+        <p style="margin-top:16px;font-size:12px;color:#78716c;">Stand: ${now}</p>
+      </div>
+    </div>`;
+}
+
+// ══════ EXCEL-IMPORT ══════
+let xlsxRows = [];
+
+function handleXlsxUpload(input){
+  const file = input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+      xlsxRows = rows;
+      showImportPreview(rows);
+    } catch(err) { showToast('Fehler beim Lesen der Datei: '+err.message); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function showImportPreview(rows){
+  const el = document.getElementById('import-preview');
+  const list = document.getElementById('import-preview-list');
+  const cnt = document.getElementById('import-count');
+  if(!rows.length){ showToast('Keine Zeilen gefunden'); return; }
+  cnt.textContent = rows.length;
+  // Render book selector
+  const sel = document.getElementById('import-book-select');
+  sel.innerHTML = BOOKS.map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
+  // Preview first 5
+  list.innerHTML = rows.slice(0,5).map((r,i) => {
+    const title = r['Liedtitel']||r['Title']||r['title']||Object.values(r)[0]||'?';
+    const page  = r['Seitenzahl(en)']||r['Seitenzahl']||r['Page']||'';
+    const cat   = r['Kategorie']||r['Category']||'Volkslieder';
+    return `<div class="flex items-center gap-2 bg-stone-50 border border-stone-200 rounded-lg px-3 py-2">
+      <div class="text-xs font-mono text-stone-400 w-5">${i+1}</div>
+      <div class="flex-1 min-w-0">
+        <div class="text-sm font-medium text-stone-800 truncate">${esc(String(title))}</div>
+        <div class="text-xs text-stone-400">${esc(String(cat))} · S.${esc(String(page))}</div>
+      </div>
+    </div>`;
+  }).join('') + (rows.length>5?`<div class="text-xs text-stone-400 px-3 py-2">... und ${rows.length-5} weitere</div>`:'');
+  el.classList.remove('hidden');
+}
+
+async function runXlsxImport(){
+  if(!xlsxRows.length){ showToast('Keine Daten zum Importieren'); return; }
+  const bookId = document.getElementById('import-book-select').value;
+  const book = BOOKS.find(b=>b.id===bookId);
+  if(!book){ showToast('Bitte Gesangbuch auswählen'); return; }
+  const btn = document.querySelector('#screen-import button[onclick="runXlsxImport()"]');
+  if(btn){ btn.disabled=true; btn.textContent='Importiere...'; }
+  let ok=0, err=0;
+  for(const r of xlsxRows){
+    const title  = String(r['Liedtitel']||r['Title']||r['title']||Object.values(r)[0]||'').trim();
+    const text   = String(r['Vollständiger Text']||r['Text']||r['lyrics']||'').trim();
+    const cat    = String(r['Kategorie']||r['Category']||'Volkslieder').trim();
+    const pageRaw= String(r['Seitenzahl(en)']||r['Seitenzahl']||r['Page']||'').trim();
+    const page   = parseInt(pageRaw.split(/[-–]/)[0])||null;
+    if(!title){ err++; continue; }
+    try {
+      const {data:song, error:sErr} = await supa.from('songs')
+        .upsert({title, category:cat, created_by:currentUser.id, updated_at:new Date().toISOString()}, {onConflict:'title'})
+        .select().single();
+      if(sErr||!song){ err++; continue; }
+      await supa.from('song_books').upsert({song_id:song.id, book_id:bookId, page_number:page}, {onConflict:'song_id,book_id'});
+      if(text){
+        const {data:existing} = await supa.from('song_variants').select('id').eq('song_id',song.id).eq('label','Standard').single();
+        if(existing){
+          await supa.from('song_variants').update({lyrics:text}).eq('id',existing.id);
+        } else {
+          await supa.from('song_variants').insert({song_id:song.id, label:'Standard', lyrics:text});
+        }
+      }
+      ok++;
+    } catch(e){ err++; }
+  }
+  if(btn){ btn.disabled=false; btn.textContent='Alle Lieder importieren'; }
+  const res = document.getElementById('import-result');
+  res.classList.remove('hidden');
+  res.innerHTML = `✓ ${ok} Lieder erfolgreich importiert${err?` · ${err} Fehler`:''}`;
+  showToast(`Import: ${ok} Lieder importiert`);
+  xlsxRows = [];
+  document.getElementById('import-preview').classList.add('hidden');
+  document.getElementById('xlsx-input').value='';
 }
 
 // ══════ INIT ══════
