@@ -733,12 +733,17 @@ async function loadBooks() {
     const editorIds = (eb || []).map(r => r.book_id);
     BOOKS = editorIds.length ? allBooks.filter(b => editorIds.includes(b.id)) : [];
   } else {
-    // Sänger sees only accessible books + standard book
+    // Sänger sees standard book + books explicitly granted
     const { data: access } = await supa.from('user_book_access').select('book_id').eq('user_id', currentUser?.id);
     const accessIds = (access || []).map(r => r.book_id);
     const stdId = settingsCache['standard_book_id'] || '';
-    const allowedIds = [...new Set([...accessIds, stdId].filter(Boolean))];
-    BOOKS = allBooks.filter(b => allowedIds.includes(b.id));
+    const allowedIds = [...new Set([...accessIds, ...(stdId ? [stdId] : [])].filter(Boolean))];
+    if (allowedIds.length) {
+      BOOKS = allBooks.filter(b => allowedIds.includes(b.id));
+    } else {
+      // No books configured yet – show all so app is not empty
+      BOOKS = allBooks;
+    }
   }
   renderBookChips();
 }
