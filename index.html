@@ -95,19 +95,10 @@ let currentProfile = null;
         <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
       </div>
       <div class="flex-1 min-w-0">
-        <div class="font-semibold text-stone-900 text-base">Joachim Kille Liedgut</div>
-        <div class="text-xs text-stone-400">Digitales Gesangbuch</div>
+        <div class="font-semibold text-stone-900 text-base" id="hdr-app-name">Joachim Kille Liedgut</div>
+        <div class="text-xs text-stone-400" id="hdr-role-label">Sänger</div>
       </div>
-      <div class="relative">
-        <select id="role-select" onchange="setRole(this.value)"
-          class="appearance-none text-xs font-semibold pl-2.5 pr-6 py-1.5 rounded-lg border border-stone-200 bg-white text-stone-600 focus:outline-none focus:ring-2 focus:ring-forest-600 cursor-pointer">
-          <option value="user">Saenger</option>
-          <option value="editor">Editor</option>
-          <option value="admin">Admin</option>
-        </select>
-        <svg class="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-stone-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
-      </div>
-      <button onclick="doLogout()" title="Abmelden" style="width:28px;height:28px;border-radius:8px;border:1px solid #e7e5e4;background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;">
+      <button onclick="doLogout()" title="Abmelden" style="width:32px;height:32px;border-radius:8px;border:1px solid #e7e5e4;background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;">
         <svg width="14" height="14" fill="none" stroke="#78716c" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
       </button>
     </div>
@@ -148,35 +139,18 @@ let currentProfile = null;
   </div>
   <div class="scroll" id="song-list"></div>
 
-  <nav class="bg-white border-t border-stone-200 flex flex-shrink-0">
-    <button onclick="showTab('songs')" class="flex-1 flex flex-col items-center py-2.5 gap-1 text-forest-700">
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-      <span class="text-[10px] font-medium">Lieder</span>
-    </button>
-    <button onclick="showTab('editor-list')" class="flex-1 flex flex-col items-center py-2.5 gap-1 text-stone-400 hidden" id="nav-editor">
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4z"/></svg>
-      <span class="text-[10px] font-medium">Bearbeiten</span>
-    </button>
-    <button onclick="showTab('admin')" class="flex-1 flex flex-col items-center py-2.5 gap-1 text-stone-400 hidden" id="nav-admin">
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-      <span class="text-[10px] font-medium">Admin</span>
-    </button>
-    <button onclick="showTab('voucher')" class="flex-1 flex flex-col items-center py-2.5 gap-1 text-stone-400" id="nav-voucher">
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
-      <span class="text-[10px] font-medium">Zugang</span>
-    </button>
-    <button onclick="showTab('users')" class="flex-1 flex flex-col items-center py-2.5 gap-1 text-stone-400 hidden" id="nav-users">
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-      <span class="text-[10px] font-medium">Nutzer</span>
-    </button>
-    <button onclick="showTab('settings')" class="flex-1 flex flex-col items-center py-2.5 gap-1 text-stone-400 hidden" id="nav-settings">
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-      <span class="text-[10px] font-medium">Einstellungen</span>
-    </button>
-    <button onclick="goScreen('impressum');loadImpressum()" class="flex-1 flex flex-col items-center py-2.5 gap-1 text-stone-400">
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-      <span class="text-[10px] font-medium">Info</span>
-    </button>
+  <nav class="bg-white border-t border-stone-200 flex-shrink-0">
+    <div class="flex" id="nav-tabs"></div>
+    <div class="border-t border-stone-100 flex items-center justify-center py-2 px-4 gap-2">
+      <span class="text-[10px] text-stone-400 font-medium">Ansicht:</span>
+      <div class="relative flex items-center">
+        <select id="role-select" onchange="setRole(this.value)"
+          class="appearance-none text-xs font-semibold pl-3 pr-7 py-1.5 rounded-lg border border-stone-200 bg-stone-50 text-stone-700 focus:outline-none focus:ring-2 focus:ring-forest-600 cursor-pointer">
+          <option value="user">Saenger</option>
+        </select>
+        <svg class="pointer-events-none absolute right-2 w-3 h-3 text-stone-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+    </div>
   </nav>
 </div>
 
@@ -856,6 +830,7 @@ function showTab(name){
   if(name==="users") loadUsers();
   if(name==="settings") loadSettings();
   goScreen(name);
+  setActiveNav(name);
 }
 
 // ══════ ROLE ══════
@@ -863,6 +838,7 @@ function setRole(r){
   role=r;
   const sel=document.getElementById("role-select");
   if(sel&&sel.value!==r) sel.value=r;
+  activeNavId = (r==='admin'||r==='owner'&&activeNavId==='songs') ? (r==='admin'?'admin':'songs') : activeNavId;
   updateNavForRole();
   renderSongs();
   renderEditorList();
@@ -1579,11 +1555,15 @@ async function afterLogin(user){
   const dbRole=(profile&&profile.role)||'user';
   // Stacked roles: owner > admin > editor > user
   const sel=document.getElementById('role-select');
-  sel.innerHTML='<option value="user">Saenger</option>';
-  if(['editor','admin','owner'].includes(dbRole)) sel.innerHTML+='<option value="editor">Editor</option>';
-  if(['admin','owner'].includes(dbRole)) sel.innerHTML+='<option value="admin">Admin</option>';
-  if(dbRole==='owner') sel.innerHTML+='<option value="owner">Owner</option>';
-  sel.value=dbRole;
+  if(sel){
+    sel.innerHTML='<option value="user">Saenger</option>';
+    if(['editor','admin','owner'].includes(dbRole)) sel.innerHTML+='<option value="editor">Editor</option>';
+    if(['admin','owner'].includes(dbRole)) sel.innerHTML+='<option value="admin">Admin</option>';
+    if(dbRole==='owner') sel.innerHTML+='<option value="owner">Owner</option>';
+    sel.value=dbRole;
+  }
+  // Default nav for role
+  activeNavId = ['admin','owner'].includes(dbRole) ? (dbRole==='owner'?'songs':'admin') : 'songs';
   setRole(dbRole);
   document.getElementById('login-overlay').style.display='none';
 }
@@ -1623,20 +1603,17 @@ async function initAuth(){
 
 // ══════ ROLE VISIBILITY ══════
 function updateNavForRole(){
-  const r = role;
-  const isEditor = ['editor','admin','owner'].includes(r);
-  const isAdmin  = ['admin','owner'].includes(r);
-  const isOwner  = r === 'owner';
-  // Helper: safe toggle – skips if element doesn't exist
-  const tog = (id, hidden) => { const el=document.getElementById(id); if(el) el.classList.toggle('hidden', hidden); };
-  const togFlex = (id, show) => { const el=document.getElementById(id); if(el){ el.classList.toggle('hidden',!show); el.classList.toggle('flex',show); } };
-  tog('nav-editor',       !isEditor);
-  tog('nav-admin-btn',    !isAdmin);
-  tog('nav-users',        !isAdmin);
-  tog('nav-settings',     !isOwner);
-  togFlex('edit-from-reader', isEditor);
-  tog('btn-toggle-delete',!isAdmin);
-  tog('btn-new-book',     !isAdmin);
+  const isEditor = ['editor','admin','owner'].includes(role);
+  const isAdmin  = ['admin','owner'].includes(role);
+  // Edit button in reader
+  const eb = document.getElementById('edit-from-reader');
+  if(eb){ eb.classList.toggle('hidden',!isEditor); eb.classList.toggle('flex',isEditor); }
+  // Delete/new book buttons
+  const tog = (id,hidden) => { const el=document.getElementById(id); if(el) el.classList.toggle('hidden',hidden); };
+  tog('btn-toggle-delete', !isAdmin);
+  tog('btn-new-book',      !isAdmin);
+  // Re-render nav for new role
+  renderNav();
 }
 
 // ══════ NUTZERVERWALTUNG ══════
@@ -2058,8 +2035,66 @@ function canEditBook(bookId){
   return true;
 }
 
+
+// ══════ DYNAMISCHE NAVIGATION ══════
+const NAV_CONFIG = {
+  user: [
+    {id:'songs',   label:'Lieder',   icon:'M9 18V5l12-2v13 M6 18m3 0a3 3 0 11-6 0 3 3 0 016 0zm12-2a3 3 0 11-6 0 3 3 0 016 0z', fn:"showTab('songs')"},
+    {id:'voucher', label:'Zugang',   icon:'M2 9h20M2 9a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V9z M12 9v12', fn:"showTab('voucher')"},
+    {id:'impressum',label:'Info',    icon:'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M12 8v4 M12 16h.01', fn:"goScreen('impressum');loadImpressum()"},
+  ],
+  editor: [
+    {id:'songs',       label:'Lieder',     icon:'M9 18V5l12-2v13 M6 18m3 0a3 3 0 11-6 0 3 3 0 016 0zm12-2a3 3 0 11-6 0 3 3 0 016 0z', fn:"showTab('songs')"},
+    {id:'editor-list', label:'Bearbeiten', icon:'M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7 M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4z', fn:"showTab('editor-list')"},
+    {id:'impressum',   label:'Info',       icon:'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M12 8v4 M12 16h.01', fn:"goScreen('impressum');loadImpressum()"},
+  ],
+  admin: [
+    {id:'admin',   label:'Übersicht', icon:'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', fn:"showTab('admin')"},
+    {id:'admin-books', label:'Bücher', icon:'M4 19.5A2.5 2.5 0 016.5 17H20 M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z', fn:"loadAdminBooks();goScreen('admin-books')"},
+    {id:'users',   label:'Nutzer',    icon:'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2 M9 7a4 4 0 100-8 4 4 0 000 8z M23 21v-2a4 4 0 00-3-3.87 M16 3.13a4 4 0 010 7.75', fn:"showTab('users')"},
+    {id:'import',  label:'Import',    icon:'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4 M17 8l-5-5-5 5 M12 3v12', fn:"goScreen('import')"},
+    {id:'impressum',label:'Info',     icon:'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M12 8v4 M12 16h.01', fn:"goScreen('impressum');loadImpressum()"},
+  ],
+  owner: [
+    {id:'songs',    label:'Lieder',      icon:'M9 18V5l12-2v13 M6 18m3 0a3 3 0 11-6 0 3 3 0 016 0zm12-2a3 3 0 11-6 0 3 3 0 016 0z', fn:"showTab('songs')"},
+    {id:'users',    label:'Nutzer',      icon:'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2 M9 7a4 4 0 100-8 4 4 0 000 8z M23 21v-2a4 4 0 00-3-3.87 M16 3.13a4 4 0 010 7.75', fn:"showTab('users')"},
+    {id:'settings', label:'Einstellungen', icon:'M12 15a3 3 0 100-6 3 3 0 000 6z M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z', fn:"showTab('settings')"},
+    {id:'impressum',label:'Info',        icon:'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M12 8v4 M12 16h.01', fn:"goScreen('impressum');loadImpressum()"},
+  ],
+};
+
+let activeNavId = 'songs';
+
+function renderNav(){
+  const tabs = NAV_CONFIG[role] || NAV_CONFIG.user;
+  const el = document.getElementById('nav-tabs');
+  if(!el) return;
+  el.innerHTML = tabs.map(t => {
+    const active = activeNavId === t.id;
+    const paths = t.icon.split(' M ').map((p,i)=>i===0?p:'M '+p);
+    const svgInner = paths.map(p=>`<path d="${p}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
+    return `<button onclick="${t.fn};setActiveNav('${t.id}')"
+      class="flex-1 flex flex-col items-center py-2.5 gap-0.5 ${active?'text-forest-700':'text-stone-400'}">
+      <svg class="w-5 h-5" viewBox="0 0 24 24">${svgInner}</svg>
+      <span class="text-[10px] font-medium">${t.label}</span>
+      ${active?'<div style="width:16px;height:2px;background:#15803d;border-radius:2px;margin-top:1px;"></div>':'<div style="width:16px;height:2px;margin-top:1px;"></div>'}
+    </button>`;
+  }).join('');
+
+  // Update role label in header
+  const roleLabels = {user:'Sänger',editor:'Editor',admin:'Admin',owner:'Owner'};
+  const lbl = document.getElementById('hdr-role-label');
+  if(lbl) lbl.textContent = roleLabels[role]||role;
+}
+
+function setActiveNav(id){
+  activeNavId = id;
+  renderNav();
+}
+
 // ══════ INIT ══════
 renderBookChips();renderCats();setSort("page");renderEditorList();renderAdminBooks();
+renderNav();
 initAuth();
 </script>
 </body>
