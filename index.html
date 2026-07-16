@@ -28,7 +28,59 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
 input,textarea,select{font-family:inherit;}
 </style>
 </head>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
+const SUPA_URL = "https://tbrnypembyyfmjtnoeil.supabase.co";
+const SUPA_KEY = "sb_publishable_uHMfy-ADYJAqIaWTmfKO4A_9pLDDEzS";
+const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
+let currentUser = null;
+let currentProfile = null;
+</script>
 <body class="bg-stone-100">
+<div id="login-overlay" style="position:fixed;inset:0;z-index:200;background:#fafaf9;display:flex;align-items:center;justify-content:center;">
+  <div style="width:100%;max-width:360px;padding:32px 24px;">
+    <div style="text-align:center;margin-bottom:32px;">
+      <div style="width:56px;height:56px;background:#15803d;border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+        <svg width="28" height="28" fill="none" stroke="#fff" stroke-width="2" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+      </div>
+      <div style="font-size:20px;font-weight:700;color:#1c1917;">Joachim Kille Liedgut</div>
+      <div style="font-size:14px;color:#78716c;margin-top:4px;">Digitales Gesangbuch</div>
+    </div>
+    <div id="login-error" style="display:none;background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:10px 14px;font-size:13px;color:#991b1b;margin-bottom:16px;"></div>
+    <div id="login-form">
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px;font-weight:600;color:#57534e;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px;">E-Mail</label>
+        <input id="login-email" type="email" placeholder="name@beispiel.de" style="width:100%;padding:11px 14px;border-radius:10px;border:1px solid #e7e5e4;background:#fff;font-size:15px;color:#1c1917;box-sizing:border-box;">
+      </div>
+      <div style="margin-bottom:20px;">
+        <label style="font-size:12px;font-weight:600;color:#57534e;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px;">Passwort</label>
+        <input id="login-password" type="password" placeholder="min. 6 Zeichen" style="width:100%;padding:11px 14px;border-radius:10px;border:1px solid #e7e5e4;background:#fff;font-size:15px;color:#1c1917;box-sizing:border-box;" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <button onclick="doLogin()" id="login-btn" style="width:100%;padding:13px;border-radius:10px;background:#15803d;color:#fff;font-size:15px;font-weight:600;border:none;cursor:pointer;margin-bottom:12px;">Anmelden</button>
+      <button onclick="showRegister()" style="width:100%;padding:13px;border-radius:10px;background:#fff;color:#57534e;font-size:14px;font-weight:500;border:1px solid #e7e5e4;cursor:pointer;">Neu registrieren</button>
+      <div style="text-align:center;margin-top:14px;">
+        <button onclick="doReset()" style="font-size:12px;color:#78716c;background:none;border:none;cursor:pointer;text-decoration:underline;">Passwort vergessen?</button>
+      </div>
+    </div>
+    <div id="register-form" style="display:none;">
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px;font-weight:600;color:#57534e;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px;">Name</label>
+        <input id="reg-name" type="text" placeholder="Vorname Nachname" style="width:100%;padding:11px 14px;border-radius:10px;border:1px solid #e7e5e4;background:#fff;font-size:15px;color:#1c1917;box-sizing:border-box;">
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px;font-weight:600;color:#57534e;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px;">E-Mail</label>
+        <input id="reg-email" type="email" placeholder="name@beispiel.de" style="width:100%;padding:11px 14px;border-radius:10px;border:1px solid #e7e5e4;background:#fff;font-size:15px;color:#1c1917;box-sizing:border-box;">
+      </div>
+      <div style="margin-bottom:20px;">
+        <label style="font-size:12px;font-weight:600;color:#57534e;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px;">Passwort</label>
+        <input id="reg-password" type="password" placeholder="min. 6 Zeichen" style="width:100%;padding:11px 14px;border-radius:10px;border:1px solid #e7e5e4;background:#fff;font-size:15px;color:#1c1917;box-sizing:border-box;" onkeydown="if(event.key==='Enter')doRegister()">
+      </div>
+      <button onclick="doRegister()" style="width:100%;padding:13px;border-radius:10px;background:#15803d;color:#fff;font-size:15px;font-weight:600;border:none;cursor:pointer;margin-bottom:12px;">Konto erstellen</button>
+      <button onclick="showLogin()" style="width:100%;padding:13px;border-radius:10px;background:#fff;color:#57534e;font-size:14px;font-weight:500;border:1px solid #e7e5e4;cursor:pointer;">Zurueck zur Anmeldung</button>
+    </div>
+    <div id="login-loading" style="display:none;text-align:center;padding:20px;color:#78716c;font-size:14px;">Wird geladen...</div>
+  </div>
+</div>
 <div class="app shadow-xl">
 
 <!-- ═══════════ SCREEN: SONGS ═══════════ -->
@@ -45,12 +97,15 @@ input,textarea,select{font-family:inherit;}
       <div class="relative">
         <select id="role-select" onchange="setRole(this.value)"
           class="appearance-none text-xs font-semibold pl-2.5 pr-6 py-1.5 rounded-lg border border-stone-200 bg-white text-stone-600 focus:outline-none focus:ring-2 focus:ring-forest-600 cursor-pointer">
-          <option value="user">🎵 Sänger</option>
-          <option value="editor">✏️ Editor</option>
-          <option value="admin">🛡 Admin</option>
+          <option value="user">Saenger</option>
+          <option value="editor">Editor</option>
+          <option value="admin">Admin</option>
         </select>
         <svg class="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-stone-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
       </div>
+      <button onclick="doLogout()" title="Abmelden" style="width:28px;height:28px;border-radius:8px;border:1px solid #e7e5e4;background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;">
+        <svg width="14" height="14" fill="none" stroke="#78716c" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
     </div>
     <!-- Book filter – first, above search -->
     <div class="flex items-center gap-2 mb-2">
@@ -1185,8 +1240,100 @@ function redeemVoucher(){
 // ══════ TOAST ══════
 function showToast(msg){const t=document.getElementById("toast");t.textContent=msg;t.style.opacity="1";clearTimeout(t._t);t._t=setTimeout(()=>t.style.opacity="0",2400);}
 
+
+// AUTH FUNCTIONS
+function showLogin(){ document.getElementById('register-form').style.display='none'; document.getElementById('login-form').style.display='block'; setLoginError(''); }
+function showRegister(){ document.getElementById('login-form').style.display='none'; document.getElementById('register-form').style.display='block'; setLoginError(''); }
+function setLoginError(msg){ const el=document.getElementById('login-error'); el.textContent=msg; el.style.display=msg?'block':'none'; }
+function setLoginLoading(on){
+  document.getElementById('login-loading').style.display=on?'block':'none';
+  document.getElementById('login-form').style.display=on?'none':(document.getElementById('register-form').style.display==='block'?'none':'block');
+  document.getElementById('register-form').style.display='none';
+}
+
+async function doLogin(){
+  const email=document.getElementById('login-email').value.trim();
+  const pw=document.getElementById('login-password').value;
+  if(!email||!pw){setLoginError('Bitte E-Mail und Passwort eingeben.');return;}
+  setLoginLoading(true);
+  const {data,error}=await supa.auth.signInWithPassword({email,password:pw});
+  if(error){setLoginLoading(false);setLoginError(error.message==='Invalid login credentials'?'E-Mail oder Passwort falsch.':error.message);return;}
+  await afterLogin(data.user);
+}
+
+async function doRegister(){
+  const name=document.getElementById('reg-name').value.trim();
+  const email=document.getElementById('reg-email').value.trim();
+  const pw=document.getElementById('reg-password').value;
+  if(!name||!email||!pw){setLoginError('Bitte alle Felder ausfullen.');return;}
+  if(pw.length<6){setLoginError('Passwort muss mindestens 6 Zeichen haben.');return;}
+  setLoginLoading(true);
+  const {data,error}=await supa.auth.signUp({email,password:pw,options:{data:{full_name:name}}});
+  if(error){setLoginLoading(false);setLoginError(error.message);return;}
+  if(data.user&&!data.session){
+    setLoginLoading(false);
+    setLoginError('');
+    document.getElementById('register-form').style.display='none';
+    document.getElementById('login-form').style.display='block';
+    document.getElementById('login-email').value=email;
+    showToast('Bestaetigung per E-Mail gesendet – bitte pruefe dein Postfach.');
+    return;
+  }
+  await afterLogin(data.user);
+}
+
+async function doReset(){
+  const email=document.getElementById('login-email').value.trim();
+  if(!email){setLoginError('Bitte zuerst deine E-Mail eingeben.');return;}
+  await supa.auth.resetPasswordForEmail(email);
+  showToast('Passwort-Reset-Link wurde per E-Mail gesendet.');
+}
+
+async function doLogout(){
+  await supa.auth.signOut();
+  currentUser=null; currentProfile=null;
+  document.getElementById('login-overlay').style.display='flex';
+  document.getElementById('login-form').style.display='block';
+  document.getElementById('register-form').style.display='none';
+  setLoginError('');
+}
+
+async function afterLogin(user){
+  currentUser=user;
+  const {data:profile}=await supa.from('profiles').select('*').eq('id',user.id).single();
+  currentProfile=profile;
+  // Set role from DB, fall back to 'user'
+  const dbRole=(profile&&profile.role)||'user';
+  // Only show admin/editor options if DB role allows
+  const sel=document.getElementById('role-select');
+  sel.innerHTML='<option value="user">Saenger</option>';
+  if(dbRole==='editor'||dbRole==='admin') sel.innerHTML+='<option value="editor">Editor</option>';
+  if(dbRole==='admin') sel.innerHTML+='<option value="admin">Admin</option>';
+  sel.value=dbRole;
+  setRole(dbRole);
+  document.getElementById('login-overlay').style.display='none';
+}
+
+// Check existing session on load
+async function initAuth(){
+  document.getElementById('login-overlay').style.display='flex';
+  document.getElementById('login-loading').style.display='block';
+  document.getElementById('login-form').style.display='none';
+  const {data:{session}}=await supa.auth.getSession();
+  if(session){
+    await afterLogin(session.user);
+  } else {
+    document.getElementById('login-loading').style.display='none';
+    document.getElementById('login-form').style.display='block';
+  }
+  supa.auth.onAuthStateChange(async(_event,session)=>{
+    if(!session&&currentUser){ doLogout(); }
+  });
+}
+
 // ══════ INIT ══════
 renderBookChips();renderCats();setSort("page");renderEditorList();renderAdminBooks();
+initAuth();
 </script>
 </body>
 </html>
