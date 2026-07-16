@@ -301,7 +301,8 @@ tailwind.config = {
   <div class="screen" id="screen-users">
     <div style="background:#fff;border-bottom:1px solid #f0ede8;padding:12px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0;">
       <div style="flex:1;font-size:15px;font-weight:600;color:#1c1917;">Nutzerverwaltung</div>
-      <button onclick="loadUsers()" style="font-size:12px;color:#15803d;background:none;border:none;cursor:pointer;font-weight:600;">Aktualisieren</button>
+      <button onclick="loadUsers()" style="font-size:12px;color:#a8a29e;background:none;border:none;cursor:pointer;font-weight:500;">Aktualisieren</button>
+      <button onclick="showNewUserModal()" style="background:#15803d;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;">+ Nutzer</button>
     </div>
     <div class="scroll" id="users-list"></div>
   </div>
@@ -1625,6 +1626,76 @@ async function loadInfo() {
     </div>`;
 }
 
+
+// ═══════════════════════════════════════════════════════
+// USER ANLEGEN (Admin/Owner)
+// ═══════════════════════════════════════════════════════
+function showNewUserModal() {
+  document.getElementById('nu-name').value = '';
+  document.getElementById('nu-email').value = '';
+  document.getElementById('nu-pw').value = '';
+  document.getElementById('nu-role').value = 'user';
+  document.getElementById('new-user-error').style.display = 'none';
+  // Owner can also assign admin, admin only up to editor
+  const roleSel = document.getElementById('nu-role');
+  roleSel.innerHTML = '<option value="user">Sänger</option><option value="editor">Editor</option>';
+  if (role === 'owner') roleSel.innerHTML += '<option value="admin">Admin</option>';
+  document.getElementById('modal-new-user').style.display = 'flex';
+  setTimeout(() => document.getElementById('nu-name').focus(), 100);
+}
+
+function closeNewUserModal() {
+  document.getElementById('modal-new-user').style.display = 'none';
+}
+
+function togglePwVis() {
+  const inp = document.getElementById('nu-pw');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+async function createUser() {
+  const name  = document.getElementById('nu-name').value.trim();
+  const email = document.getElementById('nu-email').value.trim();
+  const pw    = document.getElementById('nu-pw').value;
+  const uRole = document.getElementById('nu-role').value;
+  const errEl = document.getElementById('new-user-error');
+  const btn   = document.getElementById('nu-submit-btn');
+
+  errEl.style.display = 'none';
+
+  if (!name)  { errEl.textContent = 'Bitte Namen eingeben.';     errEl.style.display = 'block'; return; }
+  if (!email) { errEl.textContent = 'Bitte E-Mail eingeben.';    errEl.style.display = 'block'; return; }
+  if (!pw || pw.length < 6) { errEl.textContent = 'Passwort muss mind. 6 Zeichen haben.'; errEl.style.display = 'block'; return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Anlegen…';
+
+  // Use Supabase Admin API via service role – but we only have anon key.
+  // Workaround: use signUp then immediately update role via our RPC.
+  // We need a server-side function for this. Use our existing RPC pattern.
+  const { data, error } = await supa.rpc('admin_create_user', {
+    p_email: email,
+    p_password: pw,
+    p_full_name: name,
+    p_role: uRole
+  });
+
+  btn.disabled = false;
+  btn.textContent = 'Anlegen';
+
+  if (error) {
+    errEl.textContent = error.message.includes('already registered')
+      ? 'Diese E-Mail ist bereits registriert.'
+      : 'Fehler: ' + error.message;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  closeNewUserModal();
+  showToast(`Nutzer "${name}" angelegt`);
+  await loadUsers();
+}
+
 // ═══════════════════════════════════════════════════════
 // UTILS
 // ═══════════════════════════════════════════════════════
@@ -1637,5 +1708,49 @@ function esc(str) {
 // ═══════════════════════════════════════════════════════
 initAuth();
 </script>
+
+<!-- ─── NEW USER MODAL ─── -->
+<div id="modal-new-user" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.4);align-items:flex-end;justify-content:center;">
+  <div style="background:#fff;border-radius:20px 20px 0 0;padding:24px;width:100%;max-width:430px;max-height:80vh;overflow-y:auto;">
+    <div style="font-size:16px;font-weight:700;color:#1c1917;margin-bottom:6px;">Neuen Nutzer anlegen</div>
+    <div style="font-size:12px;color:#a8a29e;margin-bottom:20px;">Der Nutzer erhält einen Zugang mit dem angegebenen Passwort.</div>
+    <div id="new-user-error" style="display:none;background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:10px 14px;font-size:13px;color:#991b1b;margin-bottom:14px;"></div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div>
+        <label class="label">Name *</label>
+        <input id="nu-name" type="text" class="input" placeholder="Vorname Nachname">
+      </div>
+      <div>
+        <label class="label">E-Mail *</label>
+        <input id="nu-email" type="email" class="input" placeholder="name@beispiel.de">
+      </div>
+      <div>
+        <label class="label">Initiales Passwort *</label>
+        <div style="position:relative;">
+          <input id="nu-pw" type="password" class="input" placeholder="min. 6 Zeichen" style="padding-right:44px;">
+          <button onclick="togglePwVis()" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#a8a29e;" id="nu-pw-toggle">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div>
+        <label class="label">Rolle</label>
+        <select id="nu-role" class="input" style="cursor:pointer;">
+          <option value="user">Sänger</option>
+          <option value="editor">Editor</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:12px;padding:12px 14px;font-size:12px;color:#15803d;line-height:1.6;">
+        Der Nutzer kann sich direkt mit dieser E-Mail und dem Passwort anmelden. Das Passwort sollte beim ersten Login geändert werden.
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;">
+      <button onclick="closeNewUserModal()" class="btn-secondary" style="flex:1;">Abbrechen</button>
+      <button onclick="createUser()" class="btn-primary" style="flex:1;" id="nu-submit-btn">Anlegen</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
