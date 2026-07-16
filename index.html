@@ -520,6 +520,72 @@ let currentProfile = null;
   </div>
 </div>
 
+
+<!-- ═══════════ SCREEN: PROFIL ═══════════ -->
+<div class="screen" id="screen-profile">
+  <div class="bg-white border-b border-stone-200 px-4 py-3 flex items-center gap-3 flex-shrink-0">
+    <button onclick="goBack('songs')" class="w-8 h-8 rounded-lg border border-stone-200 flex items-center justify-center text-stone-600 hover:bg-stone-50">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+    </button>
+    <div class="font-semibold text-stone-900">Mein Profil</div>
+    <button onclick="saveProfile()" class="ml-auto px-3 py-1.5 rounded-lg bg-forest-700 text-white text-xs font-semibold hover:bg-forest-800">Speichern</button>
+  </div>
+  <div class="scroll px-4 py-4 space-y-5">
+
+    <div class="flex items-center gap-4 bg-stone-50 border border-stone-200 rounded-2xl p-4">
+      <div id="profile-avatar" class="w-14 h-14 rounded-full bg-forest-100 flex items-center justify-center text-forest-800 text-xl font-bold flex-shrink-0">?</div>
+      <div>
+        <div id="profile-name-display" class="font-semibold text-stone-900 text-base">–</div>
+        <div id="profile-email-display" class="text-xs text-stone-400 mt-0.5">–</div>
+        <div id="profile-role-badge" class="mt-1.5 inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-stone-100 text-stone-600">Sänger</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-3">Profildaten ändern</div>
+      <div class="space-y-3">
+        <div>
+          <label class="text-xs font-semibold text-stone-500 block mb-1.5">Name</label>
+          <input type="text" id="profile-name-input" placeholder="Vorname Nachname"
+            class="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-forest-600 text-stone-800">
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-3">Passwort ändern</div>
+      <div class="space-y-3">
+        <div>
+          <label class="text-xs font-semibold text-stone-500 block mb-1.5">Neues Passwort</label>
+          <input type="password" id="profile-pw-new" placeholder="min. 6 Zeichen"
+            class="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-forest-600 text-stone-800">
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-stone-500 block mb-1.5">Passwort bestätigen</label>
+          <input type="password" id="profile-pw-confirm" placeholder="Wiederholen"
+            class="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-forest-600 text-stone-800">
+        </div>
+        <button onclick="changePassword()"
+          class="w-full py-2.5 rounded-xl border border-stone-200 text-sm font-semibold text-stone-700 hover:bg-stone-50">
+          Passwort aktualisieren
+        </button>
+      </div>
+    </div>
+
+    <div id="profile-books-section">
+      <div class="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-3">Meine Berechtigungen</div>
+      <div id="profile-books-list" class="space-y-2">
+        <div class="text-xs text-stone-400">Lade...</div>
+      </div>
+    </div>
+
+    <button onclick="doLogout()" class="w-full py-3 rounded-xl border border-red-200 text-sm font-semibold text-red-600 hover:bg-red-50">
+      Abmelden
+    </button>
+
+  </div>
+</div>
+
 <!-- ═══════════ SCREEN: IMPRESSUM ═══════════ -->
 <div class="screen" id="screen-impressum">
   <div class="bg-white border-b border-stone-200 px-4 py-3 flex items-center gap-3 flex-shrink-0">
@@ -1648,10 +1714,10 @@ async function loadUsers(){
 
 async function changeUserRole(userId, newRole){
   if(!['admin','owner'].includes(role)){ showToast('Keine Berechtigung'); return; }
-  const {error} = await supa.from('profiles').update({role:newRole}).eq('id',userId);
+  const {error} = await supa.rpc('set_user_role', {target_user_id: userId, new_role: newRole});
   if(error){ showToast('Fehler: '+error.message); return; }
-  showToast('Rolle aktualisiert');
-  loadUsers();
+  showToast('Rolle gespeichert');
+  await loadUsers();
 }
 
 // ══════ EINSTELLUNGEN (Owner) ══════
@@ -2047,11 +2113,13 @@ const NAV_CONFIG = {
     {id:'songs',   label:'Lieder',   icon:'M9 18V5l12-2v13 M6 18m3 0a3 3 0 11-6 0 3 3 0 016 0zm12-2a3 3 0 11-6 0 3 3 0 016 0z', fn:"showTab('songs')"},
     {id:'voucher', label:'Zugang',   icon:'M2 9h20M2 9a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V9z M12 9v12', fn:"showTab('voucher')"},
     {id:'impressum',label:'Info',    icon:'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M12 8v4 M12 16h.01', fn:"goScreen('impressum');loadImpressum()"},
+    {id:'profile',  label:'Profil',  icon:'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2 M12 11a4 4 0 100-8 4 4 0 000 8z', fn:"goScreen('profile');loadProfile()"},
   ],
   editor: [
     {id:'songs',       label:'Lieder',     icon:'M9 18V5l12-2v13 M6 18m3 0a3 3 0 11-6 0 3 3 0 016 0zm12-2a3 3 0 11-6 0 3 3 0 016 0z', fn:"showTab('songs')"},
     {id:'editor-list', label:'Bearbeiten', icon:'M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7 M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4z', fn:"showTab('editor-list')"},
     {id:'impressum',   label:'Info',       icon:'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M12 8v4 M12 16h.01', fn:"goScreen('impressum');loadImpressum()"},
+    {id:'profile',     label:'Profil',     icon:'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2 M12 11a4 4 0 100-8 4 4 0 000 8z', fn:"goScreen('profile');loadProfile()"},
   ],
   admin: [
     {id:'admin',   label:'Übersicht', icon:'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', fn:"showTab('admin')"},
@@ -2059,12 +2127,14 @@ const NAV_CONFIG = {
     {id:'users',   label:'Nutzer',    icon:'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2 M9 7a4 4 0 100-8 4 4 0 000 8z M23 21v-2a4 4 0 00-3-3.87 M16 3.13a4 4 0 010 7.75', fn:"showTab('users')"},
     {id:'import',  label:'Import',    icon:'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4 M17 8l-5-5-5 5 M12 3v12', fn:"goScreen('import')"},
     {id:'impressum',label:'Info',     icon:'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M12 8v4 M12 16h.01', fn:"goScreen('impressum');loadImpressum()"},
+    {id:'profile', label:'Profil',   icon:'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2 M12 11a4 4 0 100-8 4 4 0 000 8z', fn:"goScreen('profile');loadProfile()"},
   ],
   owner: [
     {id:'songs',    label:'Lieder',      icon:'M9 18V5l12-2v13 M6 18m3 0a3 3 0 11-6 0 3 3 0 016 0zm12-2a3 3 0 11-6 0 3 3 0 016 0z', fn:"showTab('songs')"},
     {id:'users',    label:'Nutzer',      icon:'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2 M9 7a4 4 0 100-8 4 4 0 000 8z M23 21v-2a4 4 0 00-3-3.87 M16 3.13a4 4 0 010 7.75', fn:"showTab('users')"},
     {id:'settings', label:'Einstellungen', icon:'M12 15a3 3 0 100-6 3 3 0 000 6z M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z', fn:"showTab('settings')"},
     {id:'impressum',label:'Info',        icon:'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M12 8v4 M12 16h.01', fn:"goScreen('impressum');loadImpressum()"},
+    {id:'profile', label:'Profil',     icon:'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2 M12 11a4 4 0 100-8 4 4 0 000 8z', fn:"goScreen('profile');loadProfile()"},
   ],
 };
 
@@ -2095,6 +2165,76 @@ function renderNav(){
 function setActiveNav(id){
   activeNavId = id;
   renderNav();
+}
+
+
+// ══════ PROFIL ══════
+async function loadProfile(){
+  if(!currentUser || !currentProfile) return;
+  const p = currentProfile;
+  const initials = (p.full_name||p.email||'?').slice(0,2).toUpperCase();
+  const roleLabels = {user:'Sänger',editor:'Editor',admin:'Admin',owner:'Owner'};
+  const roleBadgeColors = {user:'bg-stone-100 text-stone-600',editor:'bg-blue-100 text-blue-700',admin:'bg-red-100 text-red-700',owner:'bg-violet-100 text-violet-700'};
+
+  const av = document.getElementById('profile-avatar');
+  if(av){ av.textContent=initials; av.className='w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold flex-shrink-0 '+(p.role==='owner'?'bg-violet-100 text-violet-800':p.role==='admin'?'bg-red-100 text-red-800':p.role==='editor'?'bg-blue-100 text-blue-800':'bg-forest-100 text-forest-800'); }
+
+  const nd = document.getElementById('profile-name-display');
+  if(nd) nd.textContent = p.full_name || p.email || '–';
+  const ed = document.getElementById('profile-email-display');
+  if(ed) ed.textContent = p.email || '–';
+  const rb = document.getElementById('profile-role-badge');
+  if(rb){ rb.textContent = roleLabels[p.role]||p.role; rb.className='mt-1.5 inline-block text-xs font-semibold px-2 py-0.5 rounded-full '+(roleBadgeColors[p.role]||'bg-stone-100 text-stone-600'); }
+  const ni = document.getElementById('profile-name-input');
+  if(ni) ni.value = p.full_name||'';
+
+  // Load book permissions
+  const el = document.getElementById('profile-books-list');
+  if(el){
+    if(['admin','owner'].includes(p.role)){
+      el.innerHTML = '<div class="text-xs text-stone-500 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5">Als '+(roleLabels[p.role]||p.role)+' hast du Zugriff auf alle freigeschalteten Inhalte.</div>';
+    } else if(p.role==='editor'){
+      const {data:eb} = await supa.from('editor_books').select('book_id, books(name,abbr,color)').eq('editor_id', currentUser.id);
+      el.innerHTML = (eb||[]).length
+        ? (eb||[]).map(r=>`<div class="flex items-center gap-2 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2">
+            <span class="text-xs font-mono font-bold px-2 py-0.5 rounded ${r.books?.color||'bg-stone-100 text-stone-600'}">${r.books?.abbr||'?'}</span>
+            <span class="text-sm text-stone-700">${r.books?.name||'?'}</span>
+            <span class="ml-auto text-xs text-blue-600 font-semibold">Editor</span>
+          </div>`).join('')
+        : '<div class="text-xs text-stone-400">Noch keine Bücher zugewiesen.</div>';
+    } else {
+      const {data:uba} = await supa.from('user_book_access').select('book_id, books(name,abbr,color)').eq('user_id', currentUser.id);
+      el.innerHTML = (uba||[]).length
+        ? (uba||[]).map(r=>`<div class="flex items-center gap-2 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2">
+            <span class="text-xs font-mono font-bold px-2 py-0.5 rounded ${r.books?.color||'bg-stone-100 text-stone-600'}">${r.books?.abbr||'?'}</span>
+            <span class="text-sm text-stone-700">${r.books?.name||'?'}</span>
+            <span class="ml-auto text-xs text-forest-600 font-semibold">Leser</span>
+          </div>`).join('')
+        : '<div class="text-xs text-stone-400">Noch kein Zugang zu Gesangbüchern. Bitte einen Voucher-Code einlösen oder den Admin kontaktieren.</div>';
+    }
+  }
+}
+
+async function saveProfile(){
+  const name = document.getElementById('profile-name-input')?.value.trim();
+  if(!name){ showToast('Bitte Namen eingeben'); return; }
+  const {error} = await supa.from('profiles').update({full_name: name}).eq('id', currentUser.id);
+  if(error){ showToast('Fehler: '+error.message); return; }
+  currentProfile.full_name = name;
+  showToast('Profil gespeichert');
+  loadProfile();
+}
+
+async function changePassword(){
+  const pw = document.getElementById('profile-pw-new')?.value;
+  const pw2 = document.getElementById('profile-pw-confirm')?.value;
+  if(!pw || pw.length < 6){ showToast('Passwort muss mind. 6 Zeichen haben'); return; }
+  if(pw !== pw2){ showToast('Passwörter stimmen nicht überein'); return; }
+  const {error} = await supa.auth.updateUser({password: pw});
+  if(error){ showToast('Fehler: '+error.message); return; }
+  document.getElementById('profile-pw-new').value = '';
+  document.getElementById('profile-pw-confirm').value = '';
+  showToast('Passwort geändert');
 }
 
 // ══════ INIT ══════
