@@ -721,9 +721,11 @@ async function afterLogin(user) {
   const { data: settingsData } = await supa.from('app_settings').select('*');
   settingsCache = {};
   (settingsData || []).forEach(r => settingsCache[r.key] = r.value);
-  // Then load books (uses settingsCache for standard book)
-  await Promise.all([loadBooks(), loadSongs()]);
+  // role VOR loadBooks setzen damit Buchfilter korrekt greift
   role = dbRole;
+  // Sequentiell laden: erst Buecher, dann Lieder (renderSongs braucht BOOKS)
+  await loadBooks();
+  await loadSongs();
   // Set username in header
   const unEl = document.getElementById('hdr-username');
   if (unEl && currentProfile) {
