@@ -1443,12 +1443,27 @@ async function toggleLock(bookId, locked) {
   loadAdminScreen();
 }
 
-async function deleteBook(bookId, bookName) {
-  const choice = confirm(`"${bookName}" löschen?\n\nOK = Lieder behalten (gehen in "Nicht zugeordnet")\nAbbrechen = Abbrechen`);
-  if (!choice) {
-    const hardDelete = confirm(`Sollen die Lieder aus "${bookName}" komplett gelöscht werden?\n(Nur Lieder ohne andere Buchzuordnung werden gelöscht)\n\nOK = Lieder löschen | Abbrechen = Nichts tun`);
-    if (!hardDelete) return;
-    // Hard delete: remove songs that are ONLY in this book
+let _pendingDeleteBookId = null, _pendingDeleteBookName = null;
+
+function deleteBook(bookId, bookName) {
+  _pendingDeleteBookId = bookId;
+  _pendingDeleteBookName = bookName;
+  const onlyHereCount = SONGS.filter(s => s.books.length === 1 && s.books[0].bookId === bookId).length;
+  document.getElementById('del-book-msg').innerHTML =
+    `Das Buch <b>${esc(bookName)}</b> enthält ${SONGS.filter(s=>s.books.some(b=>b.bookId===bookId)).length} Lieder` +
+    (onlyHereCount ? `, davon ${onlyHereCount} nur in diesem Buch.` : ', die alle auch in anderen Büchern vorhanden sind.');
+  const modal = document.getElementById('modal-delete-book');
+  modal.style.display = 'flex';
+}
+
+async function confirmDeleteBook(mode) {
+  const bookId = _pendingDeleteBookId;
+  const bookName = _pendingDeleteBookName;
+  document.getElementById('modal-delete-book').style.display = 'none';
+  if (!bookId) return;
+
+  if (mode === 'delete') {
+    // Hard delete: nur Lieder löschen die ausschließlich in diesem Buch sind
     const onlyHere = SONGS.filter(s => s.books.length === 1 && s.books[0].bookId === bookId);
     for (const s of onlyHere) {
       await supa.from('song_variants').delete().eq('song_id', s.id);
@@ -1457,8 +1472,8 @@ async function deleteBook(bookId, bookName) {
     }
     await supa.from('song_books').delete().eq('book_id', bookId);
   } else {
-    // Soft delete: move songs to system book "Nicht zugeordnet"
-    const { data: systemBook } = await supa.from('books').select('id').eq('is_system', true).single();
+    // Soft delete: Lieder in „Nicht zugeordnet" verschieben
+    const { data: systemBook } = await supa.from('books').select('id').eq('is_system', true).maybeSingle();
     if (systemBook) {
       const onlyHere = SONGS.filter(s => s.books.length === 1 && s.books[0].bookId === bookId);
       for (const s of onlyHere) {
@@ -1472,6 +1487,7 @@ async function deleteBook(bookId, bookName) {
   await supa.from('user_book_access').delete().eq('book_id', bookId);
   await supa.from('books').delete().eq('id', bookId);
   showToast(`"${bookName}" gelöscht`);
+  _pendingDeleteBookId = null; _pendingDeleteBookName = null;
   await loadBooks();
   await loadSongs();
   loadAdminScreen();
@@ -1596,41 +1612,22 @@ async function revokeBookAccess(table, col, uid, bid) {
 async function loadUsers() {
   const el = document.getElementById('users-list');
   if (!el) return;
-  el.innerHTML = '<div style="padding:20px;text-align:center;color:#a8a29e;font-size:14px;">Lade\u2026</div>';
+  el.innerHTML = '<div style="padding:20px;text-align:center;color:#a8a29e;font-size:14px;">Lade…</div>';
   const { data, error } = await supa.rpc('get_all_profiles');
   if (error) { el.innerHTML = `<div style="padding:20px;color:#ef4444;font-size:13px;">Fehler: ${error.message}</div>`; return; }
   const ROLES = role === 'owner'
-    ? [{ v: 'user', l: 'S\u00e4nger' }, { v: 'editor', l: 'Editor' }, { v: 'admin', l: 'Admin' }, { v: 'owner', l: 'Owner' }]
-    : [{ v: 'user', l: 'S\u00e4nger' }, { v: 'editor', l: 'Editor' }, { v: 'admin', l: 'Admin' }];
-  function fmtLogin(ts) {
-    if (!ts) return 'Noch nie';
-    const d = new Date(ts);
-    const diffMs = Date.now() - d;
-    const diffMin = Math.floor(diffMs / 60000);
-    const diffH   = Math.floor(diffMs / 3600000);
-    const diffD   = Math.floor(diffMs / 86400000);
-    if (diffMin < 2)  return 'Gerade eben';
-    if (diffMin < 60) return `Vor ${diffMin}\u00a0Min.`;
-    if (diffH   < 24) return `Vor ${diffH}\u00a0Std.`;
-    if (diffD   <  7) return `Vor ${diffD}\u00a0Tag${diffD > 1 ? 'en' : ''}`;
-    return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  }
+    ? [{ v: 'user', l: 'Sänger' }, { v: 'editor', l: 'Editor' }, { v: 'admin', l: 'Admin' }, { v: 'owner', l: 'Owner' }]
+    : [{ v: 'user', l: 'Sänger' }, { v: 'editor', l: 'Editor' }, { v: 'admin', l: 'Admin' }];
   el.innerHTML = (data || []).map(u => {
     const isMe = u.id === currentUser?.id;
     const canEdit = role === 'owner' || (role === 'admin' && u.role !== 'owner');
     const opts = ROLES.map(r2 => `<option value="${r2.v}" ${u.role === r2.v ? 'selected' : ''}>${r2.l}</option>`).join('');
     const initials = (u.full_name || u.email || '?').slice(0, 2).toUpperCase();
-    const loginBadge = role === 'owner'
-      ? `<span style="font-size:10px;color:#a8a29e;margin-left:6px;white-space:nowrap;">\u00b7 ${fmtLogin(u.last_sign_in_at)}</span>`
-      : '';
     return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #f5f4f0;">
       <div style="width:38px;height:38px;border-radius:50%;background:#f5f4f0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#57534e;flex-shrink:0;">${initials}</div>
       <div style="flex:1;min-width:0;">
-        <div style="font-size:13px;font-weight:600;color:#1c1917;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(u.full_name || '\u2013')}</div>
-        <div style="display:flex;align-items:center;overflow:hidden;">
-          <span style="font-size:11px;color:#a8a29e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(u.email || '')}</span>
-          ${loginBadge}
-        </div>
+        <div style="font-size:13px;font-weight:600;color:#1c1917;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(u.full_name || '–')}</div>
+        <div style="font-size:11px;color:#a8a29e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(u.email || '')}</div>
       </div>
       ${canEdit && !isMe ? `<select onchange="changeRole('${u.id}',this.value)" style="appearance:none;font-size:12px;font-weight:600;padding:5px 10px;border-radius:8px;border:1px solid #e7e5e4;background:#f9f8f6;color:#44403c;cursor:pointer;">${opts}</select>` : `<span class="role-pill ${u.role}">${ROLES.find(r2 => r2.v === u.role)?.l || u.role}</span>`}
     </div>`;
@@ -1672,6 +1669,35 @@ async function handleXlsx(input) {
 
 function showImportPreview() {
   if (!xlsxRows.length) { showToast('Keine Daten gefunden'); return; }
+
+  // ── Spaltenvalidierung ──
+  const firstRow = xlsxRows[0];
+  const cols = Object.keys(firstRow);
+  const hasTitel = cols.includes('Liedtitel') || cols.includes('Title');
+  const hasText  = cols.includes('Vollständiger Text') || cols.includes('Text') || cols.includes('lyrics');
+  const hasPage  = cols.includes('Seitenzahl(en)') || cols.includes('Seitenzahl') || cols.includes('Page');
+  const hasCat   = cols.includes('Kategorie') || cols.includes('Category');
+
+  const res = document.getElementById('import-result');
+  if (!hasTitel || !hasText) {
+    const missing = [];
+    if (!hasTitel) missing.push('"Liedtitel"');
+    if (!hasText)  missing.push('"Vollständiger Text"');
+    res.style.display = 'block';
+    res.style.background = '#fef2f2'; res.style.border = '1px solid #fca5a5'; res.style.color = '#991b1b';
+    res.innerHTML = `<div style="font-weight:600;margin-bottom:6px;">⚠️ Pflicht-Spalten fehlen</div>
+      <div style="font-size:12px;">Nicht gefunden: ${missing.join(', ')}<br>
+      Gefundene Spalten: ${cols.map(c=>`<code>${c}</code>`).join(', ')}<br><br>
+      Erwartet: <b>Liedtitel</b>, <b>Vollständiger Text</b>, Seitenzahl(en), Kategorie</div>`;
+    document.getElementById('import-preview').style.display = 'none';
+    return;
+  }
+
+  // Warnung bei optionalen Spalten
+  const warnings = [];
+  if (!hasPage) warnings.push('"Seitenzahl(en)" fehlt – Seitenzahlen werden nicht importiert');
+  if (!hasCat)  warnings.push('"Kategorie" fehlt – wird auf "Volkslieder" gesetzt');
+
   document.getElementById('import-preview-count').textContent = `${xlsxRows.length} Lieder erkannt`;
   document.getElementById('import-preview-list').innerHTML = xlsxRows.slice(0, 5).map((r, i) => {
     const title = String(r['Liedtitel'] || r['Title'] || Object.values(r)[0] || '?').trim();
@@ -1684,10 +1710,18 @@ function showImportPreview() {
       </div>
     </div>`;
   }).join('') + (xlsxRows.length > 5 ? `<div style="font-size:12px;color:#a8a29e;padding:6px 10px;">… und ${xlsxRows.length - 5} weitere</div>` : '');
+
+  if (warnings.length) {
+    res.style.display = 'block';
+    res.style.background = '#fffbeb'; res.style.border = '1px solid #fde68a'; res.style.color = '#92400e';
+    res.innerHTML = `<div style="font-weight:600;margin-bottom:4px;">Hinweis</div><div style="font-size:12px;">${warnings.map(w=>`• ${w}`).join('<br>')}</div>`;
+  } else {
+    res.style.display = 'none';
+  }
+
   const prev = document.getElementById('import-preview');
   prev.style.display = 'flex';
   prev.style.flexDirection = 'column';
-  document.getElementById('import-result').style.display = 'none';
 }
 
 async function runImport() {
@@ -1700,21 +1734,40 @@ async function runImport() {
   res.style.display = 'block';
   res.style.background = '#eff6ff'; res.style.border = '1px solid #bfdbfe'; res.style.color = '#1e40af';
   res.textContent = 'Importiere…';
-  let ok = 0, errors = [];
+  // Titel normalisieren: Leerzeichen komprimieren, trimmen
+  const normalizeTitle = t => String(t).trim().replace(/\s+/g, ' ');
+
+  let ok = 0, errors = [], skipped = 0;
+  const seenTitles = new Set(); // Duplikate innerhalb der Excel-Datei vermeiden
   for (const r of xlsxRows) {
-    const title = String(r['Liedtitel'] || r['Title'] || Object.values(r)[0] || '').trim();
+    const title = normalizeTitle(r['Liedtitel'] || r['Title'] || Object.values(r)[0] || '');
     const text = String(r['Vollständiger Text'] || r['Text'] || r['lyrics'] || '').trim();
     const cat = String(r['Kategorie'] || r['Category'] || 'Volkslieder').trim();
     const pageRaw = String(r['Seitenzahl(en)'] || r['Seitenzahl'] || r['Page'] || '').trim();
     const page = parseInt(pageRaw.split(/[-–]/)[0]) || null;
     if (!title) { errors.push('Zeile ohne Titel übersprungen'); continue; }
-    const { data: song, error: sErr } = await supa.from('songs')
-      .upsert({ title, category: cat, created_by: currentUser.id, updated_at: new Date().toISOString() }, { onConflict: 'title' })
-      .select().single();
-    if (sErr || !song) { errors.push(`"${title}": ${sErr?.message || 'Fehler'}`); continue; }
+    // Duplikat innerhalb dieser Import-Datei abfangen
+    if (seenTitles.has(title.toLowerCase())) { skipped++; continue; }
+    seenTitles.add(title.toLowerCase());
+    // Prüfen ob Song mit diesem Titel (case-insensitive) bereits existiert
+    const { data: existingSong } = await supa.from('songs').select('id,title').ilike('title', title).maybeSingle();
+    let song;
+    if (existingSong) {
+      // Update Kategorie nur wenn vorhanden, Song-ID behalten
+      song = existingSong;
+      await supa.from('songs').update({ category: cat, updated_at: new Date().toISOString() }).eq('id', song.id);
+    } else {
+      const { data: newSong, error: sErr } = await supa.from('songs')
+        .insert({ title, category: cat, created_by: currentUser.id, updated_at: new Date().toISOString() })
+        .select().single();
+      if (sErr || !newSong) { errors.push(`"${title}": ${sErr?.message || 'Fehler'}`); continue; }
+      song = newSong;
+    }
+    // Buchzuordnung: upsert verhindert Doppelzuordnung
     const { error: sbErr } = await supa.from('song_books').upsert({ song_id: song.id, book_id: bookId, page_number: page }, { onConflict: 'song_id,book_id' });
     if (sbErr) { errors.push(`"${title}": Buchzuordnung – ${sbErr.message}`); continue; }
     if (text) {
+      // Nur die Standard-Variante aktualisieren/anlegen, nie doppelt anlegen
       const { data: existing } = await supa.from('song_variants').select('id').eq('song_id', song.id).eq('label', 'Standard').maybeSingle();
       if (existing) { await supa.from('song_variants').update({ lyrics: text }).eq('id', existing.id); }
       else { await supa.from('song_variants').insert({ song_id: song.id, label: 'Standard', lyrics: text }); }
@@ -1729,12 +1782,12 @@ async function runImport() {
       `<div style="font-size:12px;max-height:120px;overflow-y:auto;">${errors.slice(0, 10).map(e => `<div>• ${esc(e)}</div>`).join('')}${errors.length > 10 ? `<div>… und ${errors.length - 10} weitere</div>` : ''}</div>`;
   } else {
     res.style.background = '#f0fdf4'; res.style.border = '1px solid #86efac'; res.style.color = '#15803d';
-    res.textContent = `✓ ${ok} Lieder erfolgreich in "${esc(book.name)}" importiert`;
+    res.textContent = `✓ ${ok} Lieder erfolgreich in "${esc(book.name)}" importiert${skipped ? ` · ${skipped} Duplikate übersprungen` : ''}`;
     xlsxRows = [];
     document.getElementById('import-preview').style.display = 'none';
     document.getElementById('xlsx-file').value = '';
   }
-  showToast(`Import: ${ok} Lieder${errors.length ? ', ' + errors.length + ' Fehler' : ''}`);
+  showToast(`Import: ${ok} Lieder${skipped ? ', ' + skipped + ' Duplikate' : ''}${errors.length ? ', ' + errors.length + ' Fehler' : ''}`);
   await loadBooks();
   await loadSongs();
   renderSongs();
@@ -2131,6 +2184,25 @@ if ('serviceWorker' in navigator) {
 // ═══════════════════════════════════════════════════════
 initAuth();
 </script>
+
+<!-- ─── DELETE BOOK MODAL ─── -->
+<div id="modal-delete-book" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.4);align-items:flex-end;justify-content:center;">
+  <div style="background:#fff;border-radius:20px 20px 0 0;padding:24px;width:100%;max-width:430px;">
+    <div style="font-size:16px;font-weight:700;color:#1c1917;margin-bottom:6px;">Buch löschen</div>
+    <div style="font-size:14px;color:#57534e;margin-bottom:20px;" id="del-book-msg"></div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <button onclick="confirmDeleteBook('keep')" style="background:#f0fdf4;color:#15803d;border:1px solid #86efac;border-radius:12px;padding:13px 16px;font-size:14px;font-weight:600;cursor:pointer;text-align:left;">
+        <div>Lieder behalten</div>
+        <div style="font-size:12px;font-weight:400;color:#57534e;margin-top:2px;">Lieder wandern in „Nicht zugeordnet"</div>
+      </button>
+      <button onclick="confirmDeleteBook('delete')" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:12px;padding:13px 16px;font-size:14px;font-weight:600;cursor:pointer;text-align:left;">
+        <div>Lieder mitlöschen</div>
+        <div style="font-size:12px;font-weight:400;color:#57534e;margin-top:2px;">Nur Lieder ohne andere Buchzuordnung werden gelöscht</div>
+      </button>
+      <button onclick="document.getElementById('modal-delete-book').style.display='none'" class="btn-secondary">Abbrechen</button>
+    </div>
+  </div>
+</div>
 
 <!-- ─── NEW USER MODAL ─── -->
 <div id="modal-new-user" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.4);align-items:flex-end;justify-content:center;">
