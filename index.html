@@ -241,6 +241,11 @@ tailwind.config = {
         <div id="admin-book-list" style="display:flex;flex-direction:column;gap:8px;"></div>
         <button id="btn-new-book" onclick="showNewBookModal()" style="display:none;margin-top:10px;" class="btn-secondary">+ Gesangbuch anlegen</button>
       </div>
+      <!-- Nicht zugeordnete Lieder -->
+      <div id="admin-unassigned-section" style="display:none;">
+        <div class="section-title" style="margin-bottom:10px;">Nicht zugeordnet</div>
+        <div id="admin-unassigned-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+      </div>
       <!-- Book-centric access management -->
       <div>
         <div class="section-title" style="margin-bottom:10px;">Zugang verwalten</div>
@@ -799,7 +804,7 @@ async function loadSongs() {
   const { data: songData } = await supa.from('songs').select('*, song_books(book_id, page_number), song_variants(id, label, lyrics, notes, sort_order)').order('title');
   SONGS = (songData || []).map(s => ({
     id: s.id, title: s.title, cat: s.category,
-    books: (s.song_books || []).map(sb => ({ bookId: sb.book_id, page: sb.page_number })),
+    books: (s.song_books || []).map(sb => ({ bookId: sb.book_id, page: sb.page_number, variantId: sb.variant_id })),
     variants: (s.song_variants || []).sort((a, b) => a.sort_order - b.sort_order).map(v => ({ id: v.id, label: v.label, text: v.lyrics || '', notes: v.notes || '' })),
   }));
   CATS = [...new Set(SONGS.map(s => s.cat).filter(Boolean))].sort();
@@ -1074,17 +1079,24 @@ async function renderEditList() {
       const c = bookColor(b);
       return `<span class="badge" style="background:${c.bg};color:${c.text};">${b.abbr}${b.is_locked ? ' 🔒' : ''}</span>`;
     }).join('');
-    return `<div onclick="${blocked ? "showToast('Buch gesperrt – nicht bearbeitbar')" : `startEditSong('${s.id}')`}"
-      style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #f5f4f0;cursor:pointer;opacity:${blocked ? '.5' : '1'};">
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:14px;font-weight:600;color:#1c1917;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(s.title)}</div>
-        <div style="display:flex;align-items:center;gap:4px;margin-top:4px;flex-wrap:wrap;">
-          ${bookBadges}
-          <span style="font-size:11px;color:#a8a29e;">${esc(s.cat)}</span>
-          ${blocked ? '<span style="font-size:11px;color:#b45309;">Gesperrt</span>' : (hasText ? '<span style="font-size:11px;color:#15803d;">✓ Text</span>' : '<span style="font-size:11px;color:#d1cfc9;">kein Text</span>')}
+    const canRemove = ['admin','owner'].includes(role) && editActiveBook !== 'all' && !blocked;
+    return `<div style="display:flex;align-items:center;border-bottom:1px solid #f5f4f0;">
+      <div onclick="${blocked ? "showToast('Buch gesperrt')" : `startEditSong('${s.id}')`}"
+        style="flex:1;display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;opacity:${blocked?'.5':'1'};">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:14px;font-weight:600;color:#1c1917;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(s.title)}</div>
+          <div style="display:flex;align-items:center;gap:4px;margin-top:4px;flex-wrap:wrap;">
+            ${bookBadges}
+            <span style="font-size:11px;color:#a8a29e;">${esc(s.cat)}</span>
+            ${blocked?'<span style="font-size:11px;color:#b45309;">Gesperrt</span>':(hasText?'<span style="font-size:11px;color:#15803d;">✓ Text</span>':'<span style="font-size:11px;color:#d1cfc9;">kein Text</span>')}
+          </div>
         </div>
+        <svg width="14" height="14" fill="none" stroke="#d1cfc9" stroke-width="2.5" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
       </div>
-      <svg width="14" height="14" fill="none" stroke="#d1cfc9" stroke-width="2.5" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+      ${canRemove ? `<button onclick="removeSongFromBook('${s.id}','${editActiveBook}')" title="Aus Buch entfernen"
+        style="padding:12px 14px;background:none;border:none;border-left:0.5px solid #f5f4f0;cursor:pointer;color:#d1cfc9;flex-shrink:0;">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>` : ''}
     </div>`;
   }).join('');
 }
@@ -1105,6 +1117,14 @@ function openSong(id) {
   const visBooks = getVisibleBooks(s);
   const bookNames = visBooks.map(sb => BOOKS.find(b => b.id === sb.bookId)?.abbr || '').filter(Boolean).join(', ');
   document.getElementById('reader-meta').textContent = [bookNames, page ? `S. ${page}` : '', s.cat].filter(Boolean).join(' · ');
+  // Determine which variant to show first based on book-specific variant_id
+  const activeBookEntry = s.books.find(b => b.bookId === activeBook) || s.books[0];
+  const preferredVariantId = activeBookEntry?.variantId;
+  const preferredIdx = preferredVariantId
+    ? s.variants.findIndex(v => v.id === preferredVariantId)
+    : 0;
+  currentVariantIdx = preferredIdx >= 0 ? preferredIdx : 0;
+
   // Variants
   const vtabs = document.getElementById('variant-tabs');
   if (s.variants.length > 1) {
@@ -1114,7 +1134,7 @@ function openSong(id) {
   } else {
     vtabs.style.display = 'none';
   }
-  showVariant(0);
+  showVariant(currentVariantIdx);
   goScreen('screen-reader');
 }
 
@@ -1177,14 +1197,23 @@ function startEditSong(id) {
 function renderEditorBooks(s) {
   const el = document.getElementById('ed-books');
   if (!el) return;
-  el.innerHTML = BOOKS.map(b => {
+  el.innerHTML = BOOKS.filter(b => !b.is_system).map(b => {
     const sb = s.books.find(x => x.bookId === b.id);
     const c = bookColor(b);
-    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#f9f8f6;border:1px solid #e7e5e4;border-radius:10px;">
-      <input type="checkbox" id="ed-book-${b.id}" value="${b.id}" ${sb ? 'checked' : ''} style="width:16px;height:16px;accent-color:#15803d;">
-      <span class="badge" style="background:${c.bg};color:${c.text};">${b.abbr}</span>
-      <span style="font-size:13px;color:#44403c;flex:1;">${esc(b.name)}</span>
-      <input type="number" id="ed-page-${b.id}" placeholder="Seite" value="${sb ? sb.page || '' : ''}" style="width:64px;padding:4px 8px;border:1px solid #e7e5e4;border-radius:8px;font-size:12px;color:#44403c;">
+    const variantOpts = s.variants.map((v,i) =>
+      `<option value="${v.id||''}" ${sb?.variantId===v.id?'selected':''}>${esc(v.label||'Variante '+(i+1))}</option>`
+    ).join('');
+    return `<div style="display:flex;flex-direction:column;gap:6px;padding:10px 12px;background:#f9f8f6;border:0.5px solid #e7e5e4;border-radius:10px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <input type="checkbox" id="ed-book-${b.id}" value="${b.id}" ${sb?'checked':''} style="width:16px;height:16px;accent-color:#15803d;">
+        <span class="badge" style="background:${c.bg};color:${c.text};">${b.abbr}</span>
+        <span style="font-size:13px;color:#44403c;flex:1;">${esc(b.name)}</span>
+        <input type="number" id="ed-page-${b.id}" placeholder="Seite" value="${sb?sb.page||'':''}" style="width:60px;padding:4px 8px;border:0.5px solid #e7e5e4;border-radius:8px;font-size:12px;color:#44403c;">
+      </div>
+      ${s.variants.length > 1 ? `<div style="display:flex;align-items:center;gap:8px;padding-left:26px;">
+        <span style="font-size:11px;color:#a8a29e;">Variante:</span>
+        <select id="ed-variant-${b.id}" style="flex:1;font-size:11px;padding:3px 6px;border:0.5px solid #e7e5e4;border-radius:6px;background:#fff;color:#44403c;">${variantOpts}</select>
+      </div>` : ''}
     </div>`;
   }).join('');
 }
@@ -1223,11 +1252,13 @@ async function saveSong() {
   // Update book assignments
   await supa.from('song_books').delete().eq('song_id', currentSongId);
   const bookInserts = [];
-  BOOKS.forEach(b => {
+  BOOKS.filter(b => !b.is_system).forEach(b => {
     const cb = document.getElementById('ed-book-' + b.id);
     if (cb?.checked) {
       const page = parseInt(document.getElementById('ed-page-' + b.id)?.value) || null;
-      bookInserts.push({ song_id: currentSongId, book_id: b.id, page_number: page });
+      const variantEl = document.getElementById('ed-variant-' + b.id);
+      const variantId = variantEl?.value || null;
+      bookInserts.push({ song_id: currentSongId, book_id: b.id, page_number: page, variant_id: variantId || null });
     }
   });
   if (bookInserts.length) await supa.from('song_books').insert(bookInserts);
@@ -1346,6 +1377,20 @@ async function loadAdminScreen() {
   const myBookIds = await getMyBookIds();
   const myBooks = role === 'owner' ? BOOKS : BOOKS.filter(b => myBookIds.includes(b.id));
   if (sub) sub.textContent = `${myBooks.length} Gesangbuch${myBooks.length !== 1 ? 'bücher' : ''}`;
+
+  // Nicht zugeordnete Lieder anzeigen
+  const uData = await loadUnassigned();
+  const uSec = document.getElementById('admin-unassigned-section');
+  const uList = document.getElementById('admin-unassigned-list');
+  if (uData && uData.songs.length > 0 && uSec && uList) {
+    uSec.style.display = 'block';
+    uList.innerHTML = `<div style="font-size:12px;color:#a8a29e;margin-bottom:6px;">${uData.songs.length} Lied${uData.songs.length!==1?'er':''} ohne Buchzuordnung</div>`
+      + uData.songs.map(s=>`<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:#fef3c7;border:0.5px solid #fde68a;border-radius:10px;">
+        <div style="flex:1;min-width:0;font-size:13px;font-weight:500;color:#1c1917;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(s.title)}</div>
+        <button onclick="startEditSong('${s.id}')" style="font-size:11px;padding:4px 10px;border-radius:8px;background:#fff;border:0.5px solid #fde68a;color:#92400e;cursor:pointer;flex-shrink:0;">Bearbeiten</button>
+      </div>`).join('');
+  } else if (uSec) { uSec.style.display = 'none'; }
+
   const btn = document.getElementById('btn-new-book');
   if (btn) btn.style.display = ['admin','owner'].includes(role) ? 'block' : 'none';
   el.innerHTML = myBooks.map(b => {
@@ -1988,6 +2033,47 @@ async function loadOverview() {
         : '<div style="padding:10px 12px;font-size:12px;color:#a8a29e;">Kein Admin zugewiesen</div>'}
     </div>`;
   }).join('');
+}
+
+
+// ══════ LIED AUS BUCH ENTFERNEN ══════
+async function removeSongFromBook(songId, bookId) {
+  const song = SONGS.find(s => s.id === songId);
+  const book = BOOKS.find(b => b.id === bookId);
+  if (!confirm(`"${song?.title}" aus "${book?.name}" entfernen?`)) return;
+
+  // Remove from this book
+  await supa.from('song_books').delete().eq('song_id', songId).eq('book_id', bookId);
+
+  // Check if song still has other books
+  const { data: remaining } = await supa.from('song_books').select('book_id').eq('song_id', songId);
+  if (!remaining || remaining.length === 0) {
+    // Move to system book "Nicht zugeordnet"
+    const { data: sysBook } = await supa.from('books').select('id').eq('is_system', true).maybeSingle();
+    if (sysBook) {
+      await supa.from('song_books').insert({ song_id: songId, book_id: sysBook.id });
+      showToast(`"${song?.title}" → Nicht zugeordnet`);
+    }
+  } else {
+    showToast(`"${song?.title}" aus Buch entfernt`);
+  }
+  await loadSongs();
+  renderEditList();
+}
+
+// ══════ VARIANT_ID IN SONG_BOOKS SETZEN ══════
+async function setVariantForBook(songId, bookId, variantId) {
+  await supa.from('song_books').update({ variant_id: variantId }).eq('song_id', songId).eq('book_id', bookId);
+  showToast('Variante für dieses Buch gespeichert');
+  await loadSongs();
+}
+
+// ══════ NICHT ZUGEORDNET ANZEIGEN ══════
+async function loadUnassigned() {
+  const { data: sysBook } = await supa.from('books').select('id,name').eq('is_system', true).maybeSingle();
+  if (!sysBook) return;
+  const unassigned = SONGS.filter(s => s.books.some(b => b.bookId === sysBook.id));
+  return { book: sysBook, songs: unassigned };
 }
 
 // ═══════════════════════════════════════════════════════
