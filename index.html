@@ -594,21 +594,24 @@ function goBack() {
   if (prev) goScreen(prev, false);
 }
 
-function switchRole(r) {
+async async function switchRole(r) {
   role = r;
   const firstScreen = (NAV[r] || NAV.user)[0].id;
   screenStack = [];
   activeScreen = '';
-  // Show/hide new song button
+  // Show/hide buttons
   const nsBtn = document.getElementById('btn-new-song');
   if (nsBtn) nsBtn.style.display = ['editor','admin','owner'].includes(r) ? 'block' : 'none';
   const nbBtn = document.getElementById('btn-new-book');
   if (nbBtn) nbBtn.style.display = ['admin','owner'].includes(r) ? 'block' : 'none';
-  // Show/hide reader edit button
   const eb = document.getElementById('reader-edit-btn');
   if (eb) eb.style.display = ['editor','admin','owner'].includes(r) ? 'flex' : 'none';
+  // Reload books for new role (Owner sees all, Admin sees assigned, etc.)
+  await loadBooks();
+  await loadBooks();
   renderSongs();
   renderEditList();
+  renderBookChips();
   goScreen(firstScreen, false);
 }
 
