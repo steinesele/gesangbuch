@@ -781,7 +781,8 @@ async function loadBooks() {
     }
   } else if (role === 'editor') {
     // Editor sees only assigned books
-    const { data: eb } = await supa.from('editor_books').select('book_id').eq('editor_id', currentUser?.id);
+    const { data: eb, error: ebErr } = await supa.from('editor_books').select('book_id').eq('editor_id', currentUser?.id);
+    if (ebErr) console.error('editor_books RLS-Fehler:', ebErr.message);
     const editorIds = (eb || []).map(r => r.book_id);
     BOOKS = editorIds.length ? allBooks.filter(b => editorIds.includes(b.id)) : [];
   } else {
