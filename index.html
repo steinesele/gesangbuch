@@ -1500,13 +1500,20 @@ async function loadSettings() {
   // Standard book
   const stdSel = document.getElementById('s-std-book');
   if (stdSel) {
-    stdSel.innerHTML = '<option value="">– Kein Standardbuch –</option>' + BOOKS.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
+    stdSel.innerHTML = '<option value="">– Kein Standardbuch –</option>' + ownerBooks.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
     if (g('standard_book_id')) stdSel.value = g('standard_book_id');
   }
   // Load admins for assignment
   const { data: profiles } = await supa.rpc('get_all_profiles');
   ownerAdmins = (profiles || []).filter(p => ['admin', 'owner'].includes(p.role) && p.id !== currentUser?.id);
-  ownerBooks = [...BOOKS];
+  // Load all books fresh from DB (not from BOOKS which may be filtered)
+  const { data: allBooksData } = await supa.from('books').select('*').eq('is_active', true).order('name');
+  ownerBooks = (allBooksData || []).map(b => ({
+    id: b.id, abbr: b.abbr, name: b.name,
+    color: b.color || 'bg-stone-100 text-stone-800',
+    dot: b.dot || 'bg-stone-500',
+    is_locked: b.is_locked || false,
+  }));
   const { data: assigns } = await supa.from('admin_books').select('*');
   ownerAssigns = assigns || [];
   const adminSel = document.getElementById('s-admin-sel');
