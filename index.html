@@ -899,7 +899,10 @@ function getVisibleBooks(song) {
 
 function filterSongs(songList) {
   const q = (document.getElementById('search')?.value || '').toLowerCase().trim();
+  const myBookIds = new Set(BOOKS.map(b => b.id));
   return songList.filter(s => {
+    // Immer auf sichtbare Buecher einschraenken
+    if (!s.books.some(b => myBookIds.has(b.bookId))) return false;
     if (activeBook !== 'all' && !s.books.find(b => b.bookId === activeBook)) return false;
     if (activeCat !== 'all' && s.cat !== activeCat) return false;
     if (!q) return true;
