@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <title>Joachim Kille Liedgut</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -107,6 +107,13 @@ tailwind.config = {
         <div style="font-size:11px;color:#a8a29e;">·</div>
         <div style="font-size:11px;color:#57534e;font-weight:500;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" id="hdr-username"></div>
       </div>
+    </div>
+    <div style="position:relative;display:flex;align-items:center;">
+      <select id="role-select" onchange="switchRole(this.value)"
+        style="appearance:none;font-size:11px;font-weight:600;padding:5px 22px 5px 8px;border-radius:8px;border:1px solid #e7e5e4;background:#f9f8f6;color:#44403c;cursor:pointer;outline:none;max-width:90px;">
+        <option value="user">Sänger</option>
+      </select>
+      <svg style="pointer-events:none;position:absolute;right:5px;" width="10" height="10" fill="none" stroke="#a8a29e" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
     </div>
     <button onclick="doLogout()" style="width:32px;height:32px;border-radius:8px;border:1px solid #e7e5e4;background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;" title="Abmelden">
       <svg width="14" height="14" fill="none" stroke="#78716c" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -420,17 +427,9 @@ tailwind.config = {
   </div><!-- end screens container -->
 
   <!-- BOTTOM NAV -->
-  <nav style="background:#fff;border-top:1px solid #f0ede8;flex-shrink:0;" id="main-nav">
+  <nav style="background:#fff;border-top:1px solid #f0ede8;flex-shrink:0;padding-bottom:env(safe-area-inset-bottom,0px);" id="main-nav">
     <div style="display:flex;" id="nav-tabs"></div>
-    <div style="border-top:1px solid #f5f4f0;display:flex;align-items:center;justify-content:center;padding:8px 16px;gap:8px;">
-      <span style="font-size:11px;color:#a8a29e;font-weight:500;">Ansicht:</span>
-      <div style="position:relative;display:flex;align-items:center;">
-        <select id="role-select" onchange="switchRole(this.value)" style="appearance:none;font-size:12px;font-weight:600;padding:5px 24px 5px 10px;border-radius:8px;border:1px solid #e7e5e4;background:#f9f8f6;color:#44403c;cursor:pointer;outline:none;">
-          <option value="user">Sänger</option>
-        </select>
-        <svg style="pointer-events:none;position:absolute;right:6px;" width="12" height="12" fill="none" stroke="#a8a29e" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
-      </div>
-    </div>
+    <div style="height:env(safe-area-inset-bottom,0px);background:#fff;"></div>
   </nav>
 
 </div><!-- end app -->
