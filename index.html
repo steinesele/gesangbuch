@@ -593,7 +593,7 @@ function goBack() {
   if (prev) goScreen(prev, false);
 }
 
-async async function switchRole(r) {
+async function switchRole(r) {
   role = r;
   const firstScreen = (NAV[r] || NAV.user)[0].id;
   screenStack = [];
@@ -729,7 +729,7 @@ async function afterLogin(user) {
   // Hide login
   document.getElementById('login-overlay').style.display = 'none';
   // Navigate to first screen for role
-  switchRole(dbRole);
+  await switchRole(dbRole);
 }
 
 async function initAuth() {
