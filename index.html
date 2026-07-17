@@ -1851,36 +1851,37 @@ async function runImport() {
 let ownerAdmins = [], ownerBooks = [], ownerAssigns = [];
 
 async function loadSettings() {
-  const { data } = await supa.from('app_settings').select('*');
+  // Zuerst alle Daten parallel laden, dann UI befüllen
+  const [settingsRes, booksRes, profilesRes, assignsRes] = await Promise.all([
+    supa.from('app_settings').select('*'),
+    supa.from('books').select('*').eq('is_active', true).order('name'),
+    supa.rpc('get_all_profiles'),
+    supa.from('admin_books').select('*'),
+  ]);
   settingsCache = {};
-  (data || []).forEach(r => settingsCache[r.key] = r.value);
+  (settingsRes.data || []).forEach(r => settingsCache[r.key] = r.value);
   const g = k => settingsCache[k] || '';
   const sv = (id, k) => { const el = document.getElementById(id); if (el) el.value = g(k); };
   sv('s-imp-name', 'impressum_name'); sv('s-imp-str', 'impressum_strasse');
   sv('s-imp-ort', 'impressum_ort'); sv('s-imp-mail', 'impressum_email');
   sv('s-imp-tel', 'impressum_telefon');
-  // Standard book
-  const stdSel = document.getElementById('s-std-book');
-  if (stdSel) {
-    stdSel.innerHTML = '<option value="">– Kein Standardbuch –</option>' + ownerBooks.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
-    if (g('standard_book_id')) stdSel.value = g('standard_book_id');
-  }
-  // Load admins for assignment
-  const { data: profiles } = await supa.rpc('get_all_profiles');
-  ownerAdmins = (profiles || []).filter(p => ['admin', 'owner'].includes(p.role) && p.id !== currentUser?.id);
-  // Load all books fresh from DB (not from BOOKS which may be filtered)
-  const { data: allBooksData } = await supa.from('books').select('*').eq('is_active', true).order('name');
-  ownerBooks = (allBooksData || []).map(b => ({
+  // Bücher zuerst in ownerBooks laden, dann Dropdown befüllen
+  ownerBooks = (booksRes.data || []).map(b => ({
     id: b.id, abbr: b.abbr, name: b.name,
     color: b.color || 'bg-stone-100 text-stone-800',
     dot: b.dot || 'bg-stone-500',
     is_locked: b.is_locked || false,
   }));
-  const { data: assigns } = await supa.from('admin_books').select('*');
-  ownerAssigns = assigns || [];
+  const stdSel = document.getElementById('s-std-book');
+  if (stdSel) {
+    stdSel.innerHTML = '<option value="">\u2013 Kein Standardbuch \u2013</option>' + ownerBooks.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
+    if (g('standard_book_id')) stdSel.value = g('standard_book_id');
+  }
+  ownerAdmins = (profilesRes.data || []).filter(p => ['admin', 'owner'].includes(p.role) && p.id !== currentUser?.id);
+  ownerAssigns = assignsRes.data || [];
   const adminSel = document.getElementById('s-admin-sel');
   if (adminSel) {
-    adminSel.innerHTML = '<option value="">– Admin auswählen –</option>' + ownerAdmins.map(a => `<option value="${a.id}">${esc(a.full_name || a.email)}</option>`).join('');
+    adminSel.innerHTML = '<option value="">\u2013 Admin ausw\u00e4hlen \u2013</option>' + ownerAdmins.map(a => `<option value="${a.id}">${esc(a.full_name || a.email)}</option>`).join('');
   }
   await loadOverview();
 }
