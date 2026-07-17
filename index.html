@@ -1592,25 +1592,23 @@ async function grantBookAccess(type) {
   const profile = allProfilesCache.find(p => p.id === userId);
 
   if (type === 'editor') {
-    // Ggf. Sänger-Zugang für dieses Buch entfernen (kein Doppeleintrag)
     await supa.from('user_book_access').delete().eq('user_id', userId).eq('book_id', currentAccessBookId);
-    // Rolle auf Editor hochstufen wenn noch Sänger
     if (profile?.role === 'user') {
       await supa.rpc('set_user_role', { target_user_id: userId, new_role: 'editor' });
     }
-    await supa.from('editor_books').upsert({ editor_id: userId, book_id: currentAccessBookId, granted_by: currentUser.id });
+    const { error } = await supa.from('editor_books').upsert({ editor_id: userId, book_id: currentAccessBookId, granted_by: currentUser.id });
+    if (error) { showToast('Fehler: ' + error.message); return; }
     showToast('Editor-Zugang gewährt');
   } else {
-    // Ggf. Editor-Zugang für dieses Buch entfernen (kein Doppeleintrag)
     await supa.from('editor_books').delete().eq('editor_id', userId).eq('book_id', currentAccessBookId);
-    // Rolle auf Sänger zurückstufen wenn Editor ohne andere Bücher
     if (profile?.role === 'editor') {
       const { data: remainingEd } = await supa.from('editor_books').select('book_id').eq('editor_id', userId).neq('book_id', currentAccessBookId);
       if (!remainingEd || remainingEd.length === 0) {
         await supa.rpc('set_user_role', { target_user_id: userId, new_role: 'user' });
       }
     }
-    await supa.from('user_book_access').upsert({ user_id: userId, book_id: currentAccessBookId, granted_via: 'admin' });
+    const { error } = await supa.from('user_book_access').upsert({ user_id: userId, book_id: currentAccessBookId, granted_via: 'admin' });
+    if (error) { showToast('Fehler: ' + error.message); return; }
     showToast('Lese-Zugang gewährt');
   }
   await loadBookAccess(currentAccessBookId);
