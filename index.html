@@ -1996,6 +1996,30 @@ function esc(str) {
 }
 
 // ═══════════════════════════════════════════════════════
+// SERVICE WORKER
+// ═══════════════════════════════════════════════════════
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('/gesangbuch/sw.js');
+      // Check for updates every time app loads
+      reg.addEventListener('updatefound', () => {
+        const newSW = reg.installing;
+        newSW.addEventListener('statechange', () => {
+          if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+            // New version available – notify user
+            showToast('Neue Version verfügbar – Seite wird aktualisiert…');
+            setTimeout(() => window.location.reload(), 2000);
+          }
+        });
+      });
+    } catch(e) {
+      console.log('SW registration failed:', e);
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════
 initAuth();
