@@ -1538,11 +1538,7 @@ async function loadBookAccess(bookId) {
         const p = allProfilesCache.find(x => x.id === r.id);
         const name = p?.full_name || p?.email || '?';
         // What other books does this person have?
-        const otherBooks = BOOKS.filter(b => !b.is_system && b.id !== bookId && (
-          r.type === 'editor'
-            ? eds?.find(e => false) // will load separately below
-            : false
-        ));
+        const otherBooks = [];
         return `<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:#f9f8f6;border:0.5px solid #e7e5e4;border-radius:10px;">
           <div style="width:32px;height:32px;border-radius:50%;background:${r.bg};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:${r.color};flex-shrink:0;">${(name).slice(0,2).toUpperCase()}</div>
           <div style="flex:1;min-width:0;">
@@ -1557,15 +1553,21 @@ async function loadBookAccess(bookId) {
     }
   }
 
-  // Populate user selector – show only users not yet in this book
-  const alreadyIn = new Set([...editorIds, ...userIds]);
+  // Populate user selector
+  // Nutzer ausblenden die bereits in DERSELBEN Rolle für dieses Buch sind
+  // Aber Wechsel Sänger↔Editor erlauben (erscheinen mit Hinweis)
   const userSel = document.getElementById('ba-user-sel');
   if (userSel) {
     const available = allProfilesCache.filter(p =>
-      p.id !== currentUser?.id && !alreadyIn.has(p.id)
+      p.id !== currentUser?.id &&
+      !editorIds.includes(p.id) &&   // bereits Editor → nicht nochmal anbieten
+      !userIds.includes(p.id)        // bereits Sänger → nicht nochmal anbieten
     );
     userSel.innerHTML = '<option value="">– Nutzer auswählen –</option>'
-      + available.map(p => `<option value="${p.id}">${esc(p.full_name || p.email)} (${p.role})</option>`).join('');
+      + available.map(p => {
+          const roleLabel = { user: 'Sänger', editor: 'Editor', admin: 'Admin', owner: 'Owner' }[p.role] || p.role;
+          return `<option value="${p.id}">${esc(p.full_name || p.email)} (${roleLabel})</option>`;
+        }).join('');
     userSel.onchange = () => showUserBooks(userSel.value);
   }
 }
@@ -1587,11 +1589,27 @@ async function showUserBooks(userId) {
 async function grantBookAccess(type) {
   const userId = document.getElementById('ba-user-sel').value;
   if (!userId || !currentAccessBookId) { showToast('Bitte Nutzer auswählen'); return; }
+  const profile = allProfilesCache.find(p => p.id === userId);
+
   if (type === 'editor') {
-    await supa.from('profiles').update({ role: 'editor' }).eq('id', userId).eq('role', 'user');
+    // Ggf. Sänger-Zugang für dieses Buch entfernen (kein Doppeleintrag)
+    await supa.from('user_book_access').delete().eq('user_id', userId).eq('book_id', currentAccessBookId);
+    // Rolle auf Editor hochstufen wenn noch Sänger
+    if (profile?.role === 'user') {
+      await supa.rpc('set_user_role', { target_user_id: userId, new_role: 'editor' });
+    }
     await supa.from('editor_books').upsert({ editor_id: userId, book_id: currentAccessBookId, granted_by: currentUser.id });
     showToast('Editor-Zugang gewährt');
   } else {
+    // Ggf. Editor-Zugang für dieses Buch entfernen (kein Doppeleintrag)
+    await supa.from('editor_books').delete().eq('editor_id', userId).eq('book_id', currentAccessBookId);
+    // Rolle auf Sänger zurückstufen wenn Editor ohne andere Bücher
+    if (profile?.role === 'editor') {
+      const { data: remainingEd } = await supa.from('editor_books').select('book_id').eq('editor_id', userId).neq('book_id', currentAccessBookId);
+      if (!remainingEd || remainingEd.length === 0) {
+        await supa.rpc('set_user_role', { target_user_id: userId, new_role: 'user' });
+      }
+    }
     await supa.from('user_book_access').upsert({ user_id: userId, book_id: currentAccessBookId, granted_via: 'admin' });
     showToast('Lese-Zugang gewährt');
   }
@@ -1601,7 +1619,26 @@ async function grantBookAccess(type) {
 
 async function revokeBookAccess(table, col, uid, bid) {
   await supa.from(table).delete().eq(col, uid).eq('book_id', bid);
-  showToast('Zugang entfernt');
+
+  // Wenn Editor-Zugang entfernt: prüfen ob noch andere Editor-Bücher vorhanden
+  if (table === 'editor_books') {
+    const { data: remaining } = await supa.from('editor_books').select('book_id').eq('editor_id', uid);
+    if (!remaining || remaining.length === 0) {
+      // Kein Editor-Buch mehr → Rolle auf Sänger zurücksetzen
+      const p = allProfilesCache.find(x => x.id === uid);
+      if (p?.role === 'editor') {
+        await supa.rpc('set_user_role', { target_user_id: uid, new_role: 'user' });
+        showToast('Zugang entfernt · Rolle auf Sänger zurückgesetzt');
+      } else {
+        showToast('Zugang entfernt');
+      }
+    } else {
+      showToast('Zugang entfernt');
+    }
+  } else {
+    showToast('Zugang entfernt');
+  }
+
   await loadBookAccess(bid);
   loadAdminScreen();
 }
@@ -1635,8 +1672,23 @@ async function loadUsers() {
 }
 
 async function changeRole(userId, newRole) {
+  // Cache sicherstellen
+  if (!allProfilesCache.length) {
+    const { data: profiles } = await supa.rpc('get_all_profiles');
+    allProfilesCache = profiles || [];
+  }
+  const oldProfile = allProfilesCache.find(p => p.id === userId);
+  const oldRole = oldProfile?.role;
   const { error } = await supa.rpc('set_user_role', { target_user_id: userId, new_role: newRole });
   if (error) { showToast('Fehler: ' + error.message); return; }
+  // Wenn von Editor → Sänger: editor_books bereinigen
+  if (oldRole === 'editor' && newRole === 'user') {
+    await supa.from('editor_books').delete().eq('editor_id', userId);
+  }
+  // Wenn von Sänger → Editor: user_book_access bereinigen
+  if (oldRole === 'user' && newRole === 'editor') {
+    await supa.from('user_book_access').delete().eq('user_id', userId);
+  }
   showToast('Rolle aktualisiert');
   await loadUsers();
 }
