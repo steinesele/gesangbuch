@@ -202,6 +202,22 @@ tailwind.config = {
       <div style="flex:1;font-size:15px;font-weight:600;color:#1c1917;">Bearbeiten</div>
       <button id="btn-new-song" onclick="openNewSongDialog()" style="display:none;background:#15803d;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer;">+ Lied</button>
     </div>
+    <div style="padding:10px 16px 0;flex-shrink:0;">
+      <div style="position:relative;margin-bottom:8px;">
+        <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#a8a29e;" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="edit-search" type="search" class="input" style="padding-left:34px;font-size:13px;height:36px;" placeholder="Titel suchen …" oninput="renderEditList()">
+      </div>
+      <div style="display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:8px;" id="edit-book-chips"></div>
+    </div>
+    <div style="padding:0 16px 6px;flex-shrink:0;display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;" id="edit-cat-chips"></div>
+    <div style="padding:0 16px 6px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-size:11px;color:#a8a29e;" id="edit-count"></span>
+      <div style="display:flex;gap:4px;">
+        <button class="btn-small active" id="edit-sort-title" onclick="setEditSort('title')">Titel</button>
+        <button class="btn-small" id="edit-sort-page" onclick="setEditSort('page')">Seite</button>
+        <button class="btn-small" id="edit-sort-cat" onclick="setEditSort('cat')">Kategorie</button>
+      </div>
+    </div>
     <div class="scroll" id="edit-list"></div>
   </div>
 
@@ -351,6 +367,16 @@ tailwind.config = {
       <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:12px 14px;font-size:12px;color:#92400e;line-height:1.6;">
         Als Privatperson nach § 5 TMG nur bei kommerziellen Diensten zur Angabe verpflichtet.
       </div>
+
+      <!-- Übersicht Buch → Admin → Editoren -->
+      <div>
+        <div class="section-title" style="margin-bottom:10px;">Übersicht: Bücher &amp; Admins</div>
+        <p style="font-size:12px;color:#78716c;margin-bottom:10px;">Wer hat Zugang zu welchem Buch?</p>
+        <div id="s-overview" style="display:flex;flex-direction:column;gap:8px;">
+          <div style="font-size:12px;color:#a8a29e;">Wird geladen…</div>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -493,6 +519,9 @@ let CATS = [];
 let activeBook = 'all';
 let activeCat = 'all';
 let sortMode = 'page';
+let editSortMode = 'title';
+let editActiveBook = 'all';
+let editActiveCat = 'all';
 let currentSongId = null;
 let screenStack = [];
 let xlsxData = [];
@@ -736,20 +765,25 @@ async function initAuth() {
 async function loadBooks() {
   // Admin/Owner/Editor see all active books
   // Users see only books they have access to + standard book
-  const { data } = await supa.from('books').select('*').eq('is_active', true).order('name');
+  const { data } = await supa.from('books').select('*').order('name');
   const allBooks = (data || []).map(b => ({
     id: b.id, abbr: b.abbr, name: b.name,
     color: b.color || 'bg-stone-100 text-stone-800',
     dot: b.dot || 'bg-stone-500',
     is_locked: b.is_locked || false,
-  }));
+    is_system: b.is_system || false,
+  })).filter(b => !b.is_system || ['admin','owner'].includes(role));
   if (role === 'owner') {
     BOOKS = allBooks;
   } else if (role === 'admin') {
-    // Admin sees only assigned books
-    const { data: ab } = await supa.from('admin_books').select('book_id').eq('admin_id', currentUser?.id);
-    const adminIds = (ab || []).map(r => r.book_id);
-    BOOKS = adminIds.length ? allBooks.filter(b => adminIds.includes(b.id)) : allBooks;
+    // Owner acting as admin sees ALL books
+    if (currentProfile?.role === 'owner') {
+      BOOKS = allBooks;
+    } else {
+      const { data: ab } = await supa.from('admin_books').select('book_id').eq('admin_id', currentUser?.id);
+      const adminIds = (ab || []).map(r => r.book_id);
+      BOOKS = adminIds.length ? allBooks.filter(b => adminIds.includes(b.id)) : allBooks;
+    }
   } else if (role === 'editor') {
     // Editor sees only assigned books
     const { data: eb } = await supa.from('editor_books').select('book_id').eq('editor_id', currentUser?.id);
@@ -955,14 +989,83 @@ async function getMyBookIds() {
   return [];
 }
 
+function setEditSort(m) {
+  editSortMode = m;
+  ['title','page','cat'].forEach(s => document.getElementById('edit-sort-'+s)?.classList.remove('active'));
+  document.getElementById('edit-sort-'+m)?.classList.add('active');
+  renderEditList();
+}
+
+function filterEditBook(id) {
+  editActiveBook = id;
+  renderEditBookChips();
+  renderEditList();
+}
+
+function filterEditCat(c) {
+  editActiveCat = c;
+  renderEditCatChips();
+  renderEditList();
+}
+
+function renderEditBookChips() {
+  const el = document.getElementById('edit-book-chips');
+  if (!el) return;
+  const allC = editActiveBook === 'all';
+  let html = `<span class="chip ${allC?'active':''}" title="Alle Bücher"
+    style="background:${allC?'#f0fdf4':'#fff'};color:${allC?'#15803d':'#78716c'};border-color:${allC?'#86efac':'#e7e5e4'};font-size:11px;font-weight:700;padding:4px 10px;"
+    onclick="filterEditBook('all')">Alle</span>`;
+  BOOKS.filter(b=>!b.is_system).forEach(b => {
+    const c = bookColor(b);
+    const isA = editActiveBook === b.id;
+    html += `<span class="chip ${isA?'active':''}" title="${b.name}"
+      style="background:${c.bg};color:${c.text};border-color:${isA?c.text:c.border};font-size:11px;font-weight:700;padding:4px 10px;font-family:monospace;"
+      onclick="filterEditBook('${b.id}')">${b.abbr.slice(0,3)}</span>`;
+  });
+  el.innerHTML = html;
+}
+
+function renderEditCatChips() {
+  const el = document.getElementById('edit-cat-chips');
+  if (!el) return;
+  const allA = editActiveCat === 'all';
+  let html = `<span class="chip ${allA?'active':''}"
+    style="background:${allA?'#f0fdf4':'#fff'};color:${allA?'#15803d':'#57534e'};border-color:${allA?'#86efac':'#e7e5e4'};font-size:11px;padding:4px 8px;"
+    onclick="filterEditCat('all')">Alle</span>`;
+  const cats = [...new Set(SONGS.map(s=>s.cat).filter(Boolean))].sort();
+  cats.forEach(c => {
+    const isA = editActiveCat === c;
+    html += `<span class="chip ${isA?'active':''}"
+      style="background:${isA?'#f0fdf4':'#fff'};color:${isA?'#15803d':'#57534e'};border-color:${isA?'#86efac':'#e7e5e4'};font-size:11px;padding:4px 8px;"
+      onclick="filterEditCat('${c}')">${c}</span>`;
+  });
+  el.innerHTML = html;
+}
+
 async function renderEditList() {
   const el = document.getElementById('edit-list');
   if (!el) return;
+  renderEditBookChips();
+  renderEditCatChips();
   const myBookIds = await getMyBookIds();
-  const songs = [...SONGS].filter(s => {
-    if (['admin','owner'].includes(role)) return true;
-    return s.books.some(b => myBookIds.includes(b.bookId));
-  }).sort((a, b) => a.title.localeCompare(b.title, 'de'));
+  const q = (document.getElementById('edit-search')?.value||'').toLowerCase().trim();
+  let songs = [...SONGS].filter(s => {
+    if (!['admin','owner'].includes(role) && !s.books.some(b => myBookIds.includes(b.bookId))) return false;
+    if (editActiveBook !== 'all' && !s.books.some(b => b.bookId === editActiveBook)) return false;
+    if (editActiveCat !== 'all' && s.cat !== editActiveCat) return false;
+    if (q && !s.title.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  songs = songs.sort((a, b) => {
+    if (editSortMode === 'page') {
+      const pa = a.books[0]?.page||9999, pb = b.books[0]?.page||9999;
+      return pa-pb || a.title.localeCompare(b.title,'de');
+    }
+    if (editSortMode === 'cat') return a.cat.localeCompare(b.cat,'de') || a.title.localeCompare(b.title,'de');
+    return a.title.localeCompare(b.title,'de');
+  });
+  const cntEl = document.getElementById('edit-count');
+  if (cntEl) cntEl.textContent = songs.length + ' Lied' + (songs.length!==1?'er':'');
   if (!songs.length) {
     el.innerHTML = '<div style="padding:40px 20px;text-align:center;color:#a8a29e;font-size:14px;">Noch keine Lieder vorhanden.</div>';
     return;
@@ -1299,14 +1402,36 @@ async function toggleLock(bookId, locked) {
 }
 
 async function deleteBook(bookId, bookName) {
-  if (!confirm(`"${bookName}" löschen?`)) return;
+  const choice = confirm(`"${bookName}" löschen?\n\nOK = Lieder behalten (gehen in "Nicht zugeordnet")\nAbbrechen = Abbrechen`);
+  if (!choice) {
+    const hardDelete = confirm(`Sollen die Lieder aus "${bookName}" komplett gelöscht werden?\n(Nur Lieder ohne andere Buchzuordnung werden gelöscht)\n\nOK = Lieder löschen | Abbrechen = Nichts tun`);
+    if (!hardDelete) return;
+    // Hard delete: remove songs that are ONLY in this book
+    const onlyHere = SONGS.filter(s => s.books.length === 1 && s.books[0].bookId === bookId);
+    for (const s of onlyHere) {
+      await supa.from('song_variants').delete().eq('song_id', s.id);
+      await supa.from('song_books').delete().eq('song_id', s.id);
+      await supa.from('songs').delete().eq('id', s.id);
+    }
+    await supa.from('song_books').delete().eq('book_id', bookId);
+  } else {
+    // Soft delete: move songs to system book "Nicht zugeordnet"
+    const { data: systemBook } = await supa.from('books').select('id').eq('is_system', true).single();
+    if (systemBook) {
+      const onlyHere = SONGS.filter(s => s.books.length === 1 && s.books[0].bookId === bookId);
+      for (const s of onlyHere) {
+        await supa.from('song_books').upsert({ song_id: s.id, book_id: systemBook.id, page_number: null });
+      }
+    }
+    await supa.from('song_books').delete().eq('book_id', bookId);
+  }
   await supa.from('admin_books').delete().eq('book_id', bookId);
   await supa.from('editor_books').delete().eq('book_id', bookId);
   await supa.from('user_book_access').delete().eq('book_id', bookId);
-  await supa.from('song_books').delete().eq('book_id', bookId);
   await supa.from('books').delete().eq('id', bookId);
   showToast(`"${bookName}" gelöscht`);
   await loadBooks();
+  await loadSongs();
   loadAdminScreen();
 }
 
@@ -1520,6 +1645,7 @@ async function loadSettings() {
   if (adminSel) {
     adminSel.innerHTML = '<option value="">– Admin auswählen –</option>' + ownerAdmins.map(a => `<option value="${a.id}">${esc(a.full_name || a.email)}</option>`).join('');
   }
+  await loadOverview();
 }
 
 function renderAdminBookCbs() {
@@ -1744,6 +1870,55 @@ async function createUser() {
   closeNewUserModal();
   showToast(`Nutzer "${name}" angelegt – kann sich sofort anmelden`);
   await loadUsers();
+}
+
+
+// ══════ OWNER ÜBERSICHT ══════
+async function loadOverview() {
+  const el = document.getElementById('s-overview');
+  if (!el) return;
+  const { data: allProfiles } = await supa.rpc('get_all_profiles');
+  const { data: adminBooks } = await supa.from('admin_books').select('*');
+  const { data: editorBooks } = await supa.from('editor_books').select('*');
+  const profileMap = {};
+  (allProfiles||[]).forEach(p => profileMap[p.id] = p);
+  const visibleBooks = BOOKS.filter(b => !b.is_system);
+  if (!visibleBooks.length) {
+    el.innerHTML = '<div style="font-size:12px;color:#a8a29e;">Noch keine Bücher vorhanden.</div>';
+    return;
+  }
+  el.innerHTML = visibleBooks.map(b => {
+    const c = bookColor(b);
+    const admins = (adminBooks||[]).filter(ab => ab.book_id === b.id);
+    const adminRows = admins.map(ab => {
+      const admin = profileMap[ab.admin_id];
+      const adminName = admin?.full_name || admin?.email || '?';
+      const editors = (editorBooks||[]).filter(eb => eb.book_id === b.id);
+      const editorNames = editors.map(eb => {
+        const ed = profileMap[eb.editor_id];
+        return ed?.full_name || ed?.email || '?';
+      });
+      return `<div style="margin-left:12px;padding:6px 10px;background:#f9f8f6;border:0.5px solid #e7e5e4;border-radius:8px;font-size:12px;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:${editorNames.length?4:0}px;">
+          <span style="background:#fee2e2;color:#991b1b;font-size:10px;font-weight:600;padding:1px 6px;border-radius:10px;">Admin</span>
+          <span style="color:#1c1917;font-weight:500;">${esc(adminName)}</span>
+        </div>
+        ${editorNames.length ? `<div style="display:flex;flex-wrap:wrap;gap:4px;">
+          ${editorNames.map(n=>`<span style="background:#dbeafe;color:#1e40af;font-size:10px;font-weight:500;padding:1px 6px;border-radius:10px;">${esc(n)}</span>`).join('')}
+        </div>` : '<div style="color:#a8a29e;font-size:11px;">Keine Editoren</div>'}
+      </div>`;
+    }).join('');
+    return `<div style="border:0.5px solid #e7e5e4;border-radius:10px;overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#f9f8f6;border-bottom:${admins.length?'0.5px solid #e7e5e4':'none'};">
+        <span class="badge" style="background:${c.bg};color:${c.text};">${b.abbr}</span>
+        <span style="font-size:13px;font-weight:500;color:#1c1917;flex:1;">${esc(b.name)}</span>
+        ${b.is_locked?'<span style="font-size:10px;color:#b45309;">🔒 Gesperrt</span>':''}
+        <span style="font-size:11px;color:#a8a29e;">${admins.length} Admin${admins.length!==1?'s':''}</span>
+      </div>
+      ${admins.length ? `<div style="padding:8px;display:flex;flex-direction:column;gap:6px;">${adminRows}</div>`
+        : '<div style="padding:10px 12px;font-size:12px;color:#a8a29e;">Kein Admin zugewiesen</div>'}
+    </div>`;
+  }).join('');
 }
 
 // ═══════════════════════════════════════════════════════
