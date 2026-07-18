@@ -721,11 +721,9 @@ async function afterLogin(user) {
   const { data: settingsData } = await supa.from('app_settings').select('*');
   settingsCache = {};
   (settingsData || []).forEach(r => settingsCache[r.key] = r.value);
-  // role VOR loadBooks setzen damit Buchfilter korrekt greift
+  // Then load books (uses settingsCache for standard book)
+  await Promise.all([loadBooks(), loadSongs()]);
   role = dbRole;
-  // Sequentiell laden: erst Buecher, dann Lieder (renderSongs braucht BOOKS)
-  await loadBooks();
-  await loadSongs();
   // Set username in header
   const unEl = document.getElementById('hdr-username');
   if (unEl && currentProfile) {
@@ -783,8 +781,7 @@ async function loadBooks() {
     }
   } else if (role === 'editor') {
     // Editor sees only assigned books
-    const { data: eb, error: ebErr } = await supa.from('editor_books').select('book_id').eq('editor_id', currentUser?.id);
-    if (ebErr) console.error('editor_books RLS-Fehler:', ebErr.message);
+    const { data: eb } = await supa.from('editor_books').select('book_id').eq('editor_id', currentUser?.id);
     const editorIds = (eb || []).map(r => r.book_id);
     BOOKS = editorIds.length ? allBooks.filter(b => editorIds.includes(b.id)) : [];
   } else {
@@ -901,10 +898,7 @@ function getVisibleBooks(song) {
 
 function filterSongs(songList) {
   const q = (document.getElementById('search')?.value || '').toLowerCase().trim();
-  const myBookIds = new Set(BOOKS.map(b => b.id));
   return songList.filter(s => {
-    // Immer auf sichtbare Buecher einschraenken
-    if (!s.books.some(b => myBookIds.has(b.bookId))) return false;
     if (activeBook !== 'all' && !s.books.find(b => b.bookId === activeBook)) return false;
     if (activeCat !== 'all' && s.cat !== activeCat) return false;
     if (!q) return true;
@@ -1449,27 +1443,12 @@ async function toggleLock(bookId, locked) {
   loadAdminScreen();
 }
 
-let _pendingDeleteBookId = null, _pendingDeleteBookName = null;
-
-function deleteBook(bookId, bookName) {
-  _pendingDeleteBookId = bookId;
-  _pendingDeleteBookName = bookName;
-  const onlyHereCount = SONGS.filter(s => s.books.length === 1 && s.books[0].bookId === bookId).length;
-  document.getElementById('del-book-msg').innerHTML =
-    `Das Buch <b>${esc(bookName)}</b> enthält ${SONGS.filter(s=>s.books.some(b=>b.bookId===bookId)).length} Lieder` +
-    (onlyHereCount ? `, davon ${onlyHereCount} nur in diesem Buch.` : ', die alle auch in anderen Büchern vorhanden sind.');
-  const modal = document.getElementById('modal-delete-book');
-  modal.style.display = 'flex';
-}
-
-async function confirmDeleteBook(mode) {
-  const bookId = _pendingDeleteBookId;
-  const bookName = _pendingDeleteBookName;
-  document.getElementById('modal-delete-book').style.display = 'none';
-  if (!bookId) return;
-
-  if (mode === 'delete') {
-    // Hard delete: nur Lieder löschen die ausschließlich in diesem Buch sind
+async function deleteBook(bookId, bookName) {
+  const choice = confirm(`"${bookName}" löschen?\n\nOK = Lieder behalten (gehen in "Nicht zugeordnet")\nAbbrechen = Abbrechen`);
+  if (!choice) {
+    const hardDelete = confirm(`Sollen die Lieder aus "${bookName}" komplett gelöscht werden?\n(Nur Lieder ohne andere Buchzuordnung werden gelöscht)\n\nOK = Lieder löschen | Abbrechen = Nichts tun`);
+    if (!hardDelete) return;
+    // Hard delete: remove songs that are ONLY in this book
     const onlyHere = SONGS.filter(s => s.books.length === 1 && s.books[0].bookId === bookId);
     for (const s of onlyHere) {
       await supa.from('song_variants').delete().eq('song_id', s.id);
@@ -1478,8 +1457,8 @@ async function confirmDeleteBook(mode) {
     }
     await supa.from('song_books').delete().eq('book_id', bookId);
   } else {
-    // Soft delete: Lieder in „Nicht zugeordnet" verschieben
-    const { data: systemBook } = await supa.from('books').select('id').eq('is_system', true).maybeSingle();
+    // Soft delete: move songs to system book "Nicht zugeordnet"
+    const { data: systemBook } = await supa.from('books').select('id').eq('is_system', true).single();
     if (systemBook) {
       const onlyHere = SONGS.filter(s => s.books.length === 1 && s.books[0].bookId === bookId);
       for (const s of onlyHere) {
@@ -1493,7 +1472,6 @@ async function confirmDeleteBook(mode) {
   await supa.from('user_book_access').delete().eq('book_id', bookId);
   await supa.from('books').delete().eq('id', bookId);
   showToast(`"${bookName}" gelöscht`);
-  _pendingDeleteBookId = null; _pendingDeleteBookName = null;
   await loadBooks();
   await loadSongs();
   loadAdminScreen();
@@ -1544,7 +1522,11 @@ async function loadBookAccess(bookId) {
         const p = allProfilesCache.find(x => x.id === r.id);
         const name = p?.full_name || p?.email || '?';
         // What other books does this person have?
-        const otherBooks = [];
+        const otherBooks = BOOKS.filter(b => !b.is_system && b.id !== bookId && (
+          r.type === 'editor'
+            ? eds?.find(e => false) // will load separately below
+            : false
+        ));
         return `<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:#f9f8f6;border:0.5px solid #e7e5e4;border-radius:10px;">
           <div style="width:32px;height:32px;border-radius:50%;background:${r.bg};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:${r.color};flex-shrink:0;">${(name).slice(0,2).toUpperCase()}</div>
           <div style="flex:1;min-width:0;">
@@ -1559,21 +1541,15 @@ async function loadBookAccess(bookId) {
     }
   }
 
-  // Populate user selector
-  // Nutzer ausblenden die bereits in DERSELBEN Rolle für dieses Buch sind
-  // Aber Wechsel Sänger↔Editor erlauben (erscheinen mit Hinweis)
+  // Populate user selector – show only users not yet in this book
+  const alreadyIn = new Set([...editorIds, ...userIds]);
   const userSel = document.getElementById('ba-user-sel');
   if (userSel) {
     const available = allProfilesCache.filter(p =>
-      p.id !== currentUser?.id &&
-      !editorIds.includes(p.id) &&   // bereits Editor → nicht nochmal anbieten
-      !userIds.includes(p.id)        // bereits Sänger → nicht nochmal anbieten
+      p.id !== currentUser?.id && !alreadyIn.has(p.id)
     );
     userSel.innerHTML = '<option value="">– Nutzer auswählen –</option>'
-      + available.map(p => {
-          const roleLabel = { user: 'Sänger', editor: 'Editor', admin: 'Admin', owner: 'Owner' }[p.role] || p.role;
-          return `<option value="${p.id}">${esc(p.full_name || p.email)} (${roleLabel})</option>`;
-        }).join('');
+      + available.map(p => `<option value="${p.id}">${esc(p.full_name || p.email)} (${p.role})</option>`).join('');
     userSel.onchange = () => showUserBooks(userSel.value);
   }
 }
@@ -1595,26 +1571,12 @@ async function showUserBooks(userId) {
 async function grantBookAccess(type) {
   const userId = document.getElementById('ba-user-sel').value;
   if (!userId || !currentAccessBookId) { showToast('Bitte Nutzer auswählen'); return; }
-  const profile = allProfilesCache.find(p => p.id === userId);
-
   if (type === 'editor') {
-    await supa.from('user_book_access').delete().eq('user_id', userId).eq('book_id', currentAccessBookId);
-    if (profile?.role === 'user') {
-      await supa.rpc('set_user_role', { target_user_id: userId, new_role: 'editor' });
-    }
-    const { error } = await supa.from('editor_books').upsert({ editor_id: userId, book_id: currentAccessBookId, granted_by: currentUser.id });
-    if (error) { showToast('Fehler: ' + error.message); return; }
+    await supa.from('profiles').update({ role: 'editor' }).eq('id', userId).eq('role', 'user');
+    await supa.from('editor_books').upsert({ editor_id: userId, book_id: currentAccessBookId, granted_by: currentUser.id });
     showToast('Editor-Zugang gewährt');
   } else {
-    await supa.from('editor_books').delete().eq('editor_id', userId).eq('book_id', currentAccessBookId);
-    if (profile?.role === 'editor') {
-      const { data: remainingEd } = await supa.from('editor_books').select('book_id').eq('editor_id', userId).neq('book_id', currentAccessBookId);
-      if (!remainingEd || remainingEd.length === 0) {
-        await supa.rpc('set_user_role', { target_user_id: userId, new_role: 'user' });
-      }
-    }
-    const { error } = await supa.from('user_book_access').upsert({ user_id: userId, book_id: currentAccessBookId, granted_via: 'admin' });
-    if (error) { showToast('Fehler: ' + error.message); return; }
+    await supa.from('user_book_access').upsert({ user_id: userId, book_id: currentAccessBookId, granted_via: 'admin' });
     showToast('Lese-Zugang gewährt');
   }
   await loadBookAccess(currentAccessBookId);
@@ -1623,26 +1585,7 @@ async function grantBookAccess(type) {
 
 async function revokeBookAccess(table, col, uid, bid) {
   await supa.from(table).delete().eq(col, uid).eq('book_id', bid);
-
-  // Wenn Editor-Zugang entfernt: prüfen ob noch andere Editor-Bücher vorhanden
-  if (table === 'editor_books') {
-    const { data: remaining } = await supa.from('editor_books').select('book_id').eq('editor_id', uid);
-    if (!remaining || remaining.length === 0) {
-      // Kein Editor-Buch mehr → Rolle auf Sänger zurücksetzen
-      const p = allProfilesCache.find(x => x.id === uid);
-      if (p?.role === 'editor') {
-        await supa.rpc('set_user_role', { target_user_id: uid, new_role: 'user' });
-        showToast('Zugang entfernt · Rolle auf Sänger zurückgesetzt');
-      } else {
-        showToast('Zugang entfernt');
-      }
-    } else {
-      showToast('Zugang entfernt');
-    }
-  } else {
-    showToast('Zugang entfernt');
-  }
-
+  showToast('Zugang entfernt');
   await loadBookAccess(bid);
   loadAdminScreen();
 }
@@ -1676,23 +1619,8 @@ async function loadUsers() {
 }
 
 async function changeRole(userId, newRole) {
-  // Cache sicherstellen
-  if (!allProfilesCache.length) {
-    const { data: profiles } = await supa.rpc('get_all_profiles');
-    allProfilesCache = profiles || [];
-  }
-  const oldProfile = allProfilesCache.find(p => p.id === userId);
-  const oldRole = oldProfile?.role;
   const { error } = await supa.rpc('set_user_role', { target_user_id: userId, new_role: newRole });
   if (error) { showToast('Fehler: ' + error.message); return; }
-  // Wenn von Editor → Sänger: editor_books bereinigen
-  if (oldRole === 'editor' && newRole === 'user') {
-    await supa.from('editor_books').delete().eq('editor_id', userId);
-  }
-  // Wenn von Sänger → Editor: user_book_access bereinigen
-  if (oldRole === 'user' && newRole === 'editor') {
-    await supa.from('user_book_access').delete().eq('user_id', userId);
-  }
   showToast('Rolle aktualisiert');
   await loadUsers();
 }
@@ -1725,35 +1653,6 @@ async function handleXlsx(input) {
 
 function showImportPreview() {
   if (!xlsxRows.length) { showToast('Keine Daten gefunden'); return; }
-
-  // ── Spaltenvalidierung ──
-  const firstRow = xlsxRows[0];
-  const cols = Object.keys(firstRow);
-  const hasTitel = cols.includes('Liedtitel') || cols.includes('Title');
-  const hasText  = cols.includes('Vollständiger Text') || cols.includes('Text') || cols.includes('lyrics');
-  const hasPage  = cols.includes('Seitenzahl(en)') || cols.includes('Seitenzahl') || cols.includes('Page');
-  const hasCat   = cols.includes('Kategorie') || cols.includes('Category');
-
-  const res = document.getElementById('import-result');
-  if (!hasTitel || !hasText) {
-    const missing = [];
-    if (!hasTitel) missing.push('"Liedtitel"');
-    if (!hasText)  missing.push('"Vollständiger Text"');
-    res.style.display = 'block';
-    res.style.background = '#fef2f2'; res.style.border = '1px solid #fca5a5'; res.style.color = '#991b1b';
-    res.innerHTML = `<div style="font-weight:600;margin-bottom:6px;">⚠️ Pflicht-Spalten fehlen</div>
-      <div style="font-size:12px;">Nicht gefunden: ${missing.join(', ')}<br>
-      Gefundene Spalten: ${cols.map(c=>`<code>${c}</code>`).join(', ')}<br><br>
-      Erwartet: <b>Liedtitel</b>, <b>Vollständiger Text</b>, Seitenzahl(en), Kategorie</div>`;
-    document.getElementById('import-preview').style.display = 'none';
-    return;
-  }
-
-  // Warnung bei optionalen Spalten
-  const warnings = [];
-  if (!hasPage) warnings.push('"Seitenzahl(en)" fehlt – Seitenzahlen werden nicht importiert');
-  if (!hasCat)  warnings.push('"Kategorie" fehlt – wird auf "Volkslieder" gesetzt');
-
   document.getElementById('import-preview-count').textContent = `${xlsxRows.length} Lieder erkannt`;
   document.getElementById('import-preview-list').innerHTML = xlsxRows.slice(0, 5).map((r, i) => {
     const title = String(r['Liedtitel'] || r['Title'] || Object.values(r)[0] || '?').trim();
@@ -1766,18 +1665,10 @@ function showImportPreview() {
       </div>
     </div>`;
   }).join('') + (xlsxRows.length > 5 ? `<div style="font-size:12px;color:#a8a29e;padding:6px 10px;">… und ${xlsxRows.length - 5} weitere</div>` : '');
-
-  if (warnings.length) {
-    res.style.display = 'block';
-    res.style.background = '#fffbeb'; res.style.border = '1px solid #fde68a'; res.style.color = '#92400e';
-    res.innerHTML = `<div style="font-weight:600;margin-bottom:4px;">Hinweis</div><div style="font-size:12px;">${warnings.map(w=>`• ${w}`).join('<br>')}</div>`;
-  } else {
-    res.style.display = 'none';
-  }
-
   const prev = document.getElementById('import-preview');
   prev.style.display = 'flex';
   prev.style.flexDirection = 'column';
+  document.getElementById('import-result').style.display = 'none';
 }
 
 async function runImport() {
@@ -1790,40 +1681,21 @@ async function runImport() {
   res.style.display = 'block';
   res.style.background = '#eff6ff'; res.style.border = '1px solid #bfdbfe'; res.style.color = '#1e40af';
   res.textContent = 'Importiere…';
-  // Titel normalisieren: Leerzeichen komprimieren, trimmen
-  const normalizeTitle = t => String(t).trim().replace(/\s+/g, ' ');
-
-  let ok = 0, errors = [], skipped = 0;
-  const seenTitles = new Set(); // Duplikate innerhalb der Excel-Datei vermeiden
+  let ok = 0, errors = [];
   for (const r of xlsxRows) {
-    const title = normalizeTitle(r['Liedtitel'] || r['Title'] || Object.values(r)[0] || '');
+    const title = String(r['Liedtitel'] || r['Title'] || Object.values(r)[0] || '').trim();
     const text = String(r['Vollständiger Text'] || r['Text'] || r['lyrics'] || '').trim();
     const cat = String(r['Kategorie'] || r['Category'] || 'Volkslieder').trim();
     const pageRaw = String(r['Seitenzahl(en)'] || r['Seitenzahl'] || r['Page'] || '').trim();
     const page = parseInt(pageRaw.split(/[-–]/)[0]) || null;
     if (!title) { errors.push('Zeile ohne Titel übersprungen'); continue; }
-    // Duplikat innerhalb dieser Import-Datei abfangen
-    if (seenTitles.has(title.toLowerCase())) { skipped++; continue; }
-    seenTitles.add(title.toLowerCase());
-    // Prüfen ob Song mit diesem Titel (case-insensitive) bereits existiert
-    const { data: existingSong } = await supa.from('songs').select('id,title').ilike('title', title).maybeSingle();
-    let song;
-    if (existingSong) {
-      // Update Kategorie nur wenn vorhanden, Song-ID behalten
-      song = existingSong;
-      await supa.from('songs').update({ category: cat, updated_at: new Date().toISOString() }).eq('id', song.id);
-    } else {
-      const { data: newSong, error: sErr } = await supa.from('songs')
-        .insert({ title, category: cat, created_by: currentUser.id, updated_at: new Date().toISOString() })
-        .select().single();
-      if (sErr || !newSong) { errors.push(`"${title}": ${sErr?.message || 'Fehler'}`); continue; }
-      song = newSong;
-    }
-    // Buchzuordnung: upsert verhindert Doppelzuordnung
+    const { data: song, error: sErr } = await supa.from('songs')
+      .upsert({ title, category: cat, created_by: currentUser.id, updated_at: new Date().toISOString() }, { onConflict: 'title' })
+      .select().single();
+    if (sErr || !song) { errors.push(`"${title}": ${sErr?.message || 'Fehler'}`); continue; }
     const { error: sbErr } = await supa.from('song_books').upsert({ song_id: song.id, book_id: bookId, page_number: page }, { onConflict: 'song_id,book_id' });
     if (sbErr) { errors.push(`"${title}": Buchzuordnung – ${sbErr.message}`); continue; }
     if (text) {
-      // Nur die Standard-Variante aktualisieren/anlegen, nie doppelt anlegen
       const { data: existing } = await supa.from('song_variants').select('id').eq('song_id', song.id).eq('label', 'Standard').maybeSingle();
       if (existing) { await supa.from('song_variants').update({ lyrics: text }).eq('id', existing.id); }
       else { await supa.from('song_variants').insert({ song_id: song.id, label: 'Standard', lyrics: text }); }
@@ -1838,12 +1710,12 @@ async function runImport() {
       `<div style="font-size:12px;max-height:120px;overflow-y:auto;">${errors.slice(0, 10).map(e => `<div>• ${esc(e)}</div>`).join('')}${errors.length > 10 ? `<div>… und ${errors.length - 10} weitere</div>` : ''}</div>`;
   } else {
     res.style.background = '#f0fdf4'; res.style.border = '1px solid #86efac'; res.style.color = '#15803d';
-    res.textContent = `✓ ${ok} Lieder erfolgreich in "${esc(book.name)}" importiert${skipped ? ` · ${skipped} Duplikate übersprungen` : ''}`;
+    res.textContent = `✓ ${ok} Lieder erfolgreich in "${esc(book.name)}" importiert`;
     xlsxRows = [];
     document.getElementById('import-preview').style.display = 'none';
     document.getElementById('xlsx-file').value = '';
   }
-  showToast(`Import: ${ok} Lieder${skipped ? ', ' + skipped + ' Duplikate' : ''}${errors.length ? ', ' + errors.length + ' Fehler' : ''}`);
+  showToast(`Import: ${ok} Lieder${errors.length ? ', ' + errors.length + ' Fehler' : ''}`);
   await loadBooks();
   await loadSongs();
   renderSongs();
@@ -1855,39 +1727,47 @@ async function runImport() {
 // ═══════════════════════════════════════════════════════
 let ownerAdmins = [], ownerBooks = [], ownerAssigns = [];
 
-async function loadSettings() {
-  // Zuerst alle Daten parallel laden, dann UI befüllen
-  const [settingsRes, booksRes, profilesRes, assignsRes] = await Promise.all([
-    supa.from('app_settings').select('*'),
-    supa.from('books').select('*').eq('is_active', true).order('name'),
-    supa.rpc('get_all_profiles'),
-    supa.from('admin_books').select('*'),
-  ]);
+async function loadSettings(keepAdminId) {
+  // 1) App-Settings laden
+  const { data } = await supa.from('app_settings').select('*');
   settingsCache = {};
-  (settingsRes.data || []).forEach(r => settingsCache[r.key] = r.value);
+  (data || []).forEach(r => settingsCache[r.key] = r.value);
   const g = k => settingsCache[k] || '';
   const sv = (id, k) => { const el = document.getElementById(id); if (el) el.value = g(k); };
   sv('s-imp-name', 'impressum_name'); sv('s-imp-str', 'impressum_strasse');
   sv('s-imp-ort', 'impressum_ort'); sv('s-imp-mail', 'impressum_email');
   sv('s-imp-tel', 'impressum_telefon');
-  // Bücher zuerst in ownerBooks laden, dann Dropdown befüllen
-  ownerBooks = (booksRes.data || []).map(b => ({
+
+  // 2) Bücher, Admins und Zuweisungen parallel laden
+  const [profilesRes, allBooksRes, assignsRes] = await Promise.all([
+    supa.rpc('get_all_profiles'),
+    supa.from('books').select('*').eq('is_active', true).order('name'),
+    supa.from('admin_books').select('*'),
+  ]);
+  ownerAdmins = ((profilesRes.data || []).filter(p => ['admin', 'owner'].includes(p.role) && p.id !== currentUser?.id));
+  ownerBooks = (allBooksRes.data || []).map(b => ({
     id: b.id, abbr: b.abbr, name: b.name,
     color: b.color || 'bg-stone-100 text-stone-800',
     dot: b.dot || 'bg-stone-500',
     is_locked: b.is_locked || false,
   }));
+  ownerAssigns = assignsRes.data || [];
+
+  // 3) Standard-Buch-Dropdown (ownerBooks ist jetzt befüllt)
   const stdSel = document.getElementById('s-std-book');
   if (stdSel) {
-    stdSel.innerHTML = '<option value="">\u2013 Kein Standardbuch \u2013</option>' + ownerBooks.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
+    stdSel.innerHTML = '<option value="">– Kein Standardbuch –</option>' + ownerBooks.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
     if (g('standard_book_id')) stdSel.value = g('standard_book_id');
   }
-  ownerAdmins = (profilesRes.data || []).filter(p => ['admin', 'owner'].includes(p.role) && p.id !== currentUser?.id);
-  ownerAssigns = assignsRes.data || [];
+
+  // 4) Admin-Dropdown – ggf. vorherige Auswahl wiederherstellen
   const adminSel = document.getElementById('s-admin-sel');
   if (adminSel) {
-    adminSel.innerHTML = '<option value="">\u2013 Admin ausw\u00e4hlen \u2013</option>' + ownerAdmins.map(a => `<option value="${a.id}">${esc(a.full_name || a.email)}</option>`).join('');
+    adminSel.innerHTML = '<option value="">– Admin auswählen –</option>' + ownerAdmins.map(a => `<option value="${a.id}">${esc(a.full_name || a.email)}</option>`).join('');
+    if (keepAdminId) adminSel.value = keepAdminId;
   }
+  renderAdminBookCbs();
+
   await loadOverview();
 }
 
@@ -1922,6 +1802,7 @@ async function toggleAdminBook(adminId, bookId, assign) {
 }
 
 async function saveSettings() {
+  const currentAdminId = document.getElementById('s-admin-sel')?.value || '';
   const updates = [
     { key: 'impressum_name', value: document.getElementById('s-imp-name')?.value || '' },
     { key: 'impressum_strasse', value: document.getElementById('s-imp-str')?.value || '' },
@@ -1935,6 +1816,8 @@ async function saveSettings() {
     settingsCache[u.key] = u.value;
   }
   showToast('Einstellungen gespeichert');
+  // Einstellungen neu laden, dabei Admin-Auswahl beibehalten
+  await loadSettings(currentAdminId);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -2241,25 +2124,6 @@ if ('serviceWorker' in navigator) {
 // ═══════════════════════════════════════════════════════
 initAuth();
 </script>
-
-<!-- ─── DELETE BOOK MODAL ─── -->
-<div id="modal-delete-book" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.4);align-items:flex-end;justify-content:center;">
-  <div style="background:#fff;border-radius:20px 20px 0 0;padding:24px;width:100%;max-width:430px;">
-    <div style="font-size:16px;font-weight:700;color:#1c1917;margin-bottom:6px;">Buch löschen</div>
-    <div style="font-size:14px;color:#57534e;margin-bottom:20px;" id="del-book-msg"></div>
-    <div style="display:flex;flex-direction:column;gap:10px;">
-      <button onclick="confirmDeleteBook('keep')" style="background:#f0fdf4;color:#15803d;border:1px solid #86efac;border-radius:12px;padding:13px 16px;font-size:14px;font-weight:600;cursor:pointer;text-align:left;">
-        <div>Lieder behalten</div>
-        <div style="font-size:12px;font-weight:400;color:#57534e;margin-top:2px;">Lieder wandern in „Nicht zugeordnet"</div>
-      </button>
-      <button onclick="confirmDeleteBook('delete')" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:12px;padding:13px 16px;font-size:14px;font-weight:600;cursor:pointer;text-align:left;">
-        <div>Lieder mitlöschen</div>
-        <div style="font-size:12px;font-weight:400;color:#57534e;margin-top:2px;">Nur Lieder ohne andere Buchzuordnung werden gelöscht</div>
-      </button>
-      <button onclick="document.getElementById('modal-delete-book').style.display='none'" class="btn-secondary">Abbrechen</button>
-    </div>
-  </div>
-</div>
 
 <!-- ─── NEW USER MODAL ─── -->
 <div id="modal-new-user" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.4);align-items:flex-end;justify-content:center;">
