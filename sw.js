@@ -1,4 +1,4 @@
-const CACHE = 'jkl-202607170837';
+const CACHE = 'jkl-202609221720';
 const ASSETS = [
   '/gesangbuch/',
   '/gesangbuch/index.html',
@@ -31,7 +31,7 @@ self.addEventListener('fetch', e => {
     return;
   }
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: 'no-store' })
       .then(res => {
         const clone = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, clone));
