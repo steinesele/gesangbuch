@@ -500,6 +500,20 @@ const supa = supabase.createClient(SUPA_URL, SUPA_KEY, {
 });
 
 // ═══════════════════════════════════════════════════════
+// EINLADUNGSLINK: ?invite=<token> aus der URL abgreifen
+// ═══════════════════════════════════════════════════════
+(function captureInviteFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('invite');
+  if (!token) return;
+  localStorage.setItem('pendingInviteToken', token);
+  params.delete('invite');
+  const rest = params.toString();
+  const newUrl = window.location.pathname + (rest ? '?' + rest : '') + window.location.hash;
+  window.history.replaceState({}, '', newUrl);
+})();
+
+// ═══════════════════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════════════════
 let currentUser = null;
@@ -735,6 +749,21 @@ async function afterLogin(user) {
   document.getElementById('login-overlay').style.display = 'none';
   // Navigate to first screen for role
   await switchRole(dbRole);
+  // Einladungslink einlösen, falls vorhanden
+  await consumePendingInvite();
+}
+
+async function consumePendingInvite() {
+  const token = localStorage.getItem('pendingInviteToken');
+  if (!token) return;
+  localStorage.removeItem('pendingInviteToken');
+  const { data, error } = await supa.rpc('redeem_book_invite', { p_token: token });
+  if (error) { showToast('Einladungslink ungültig oder abgelaufen'); return; }
+  const bookName = data && data[0] ? data[0].book_name : null;
+  showToast(bookName ? `Zugriff auf "${bookName}" erhalten` : 'Zugriff gewährt');
+  await loadBooks();
+  renderBookChips();
+  renderSongs();
 }
 
 async function initAuth() {
@@ -1364,7 +1393,7 @@ async function createBook() {
   closeNewBook();
   showToast(`"${name}" angelegt`);
   await loadBooks();
-  loadAdminScreen();
+  await loadAdminScreen();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1393,17 +1422,31 @@ async function loadAdminScreen() {
 
   const btn = document.getElementById('btn-new-book');
   if (btn) btn.style.display = ['admin','owner'].includes(role) ? 'block' : 'none';
+  // Einladungslinks laden
+  const bookIdsForInvites = myBooks.map(b => b.id);
+  if (bookIdsForInvites.length) {
+    const { data: invitesData } = await supa.from('book_invites').select('book_id,token').in('book_id', bookIdsForInvites);
+    (invitesData || []).forEach(r => { bookInvites[r.book_id] = r.token; });
+  }
   el.innerHTML = myBooks.map(b => {
     const c = bookColor(b);
     const count = SONGS.filter(s => s.books.some(sb => sb.bookId === b.id)).length;
-    return `<div style="display:flex;align-items:center;gap:10px;padding:12px;background:${b.is_locked ? '#fffbeb' : '#f9f8f6'};border:1px solid ${b.is_locked ? '#fde68a' : '#e7e5e4'};border-radius:12px;">
-      <span class="badge" style="background:${c.bg};color:${c.text};">${b.abbr}</span>
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:13px;font-weight:600;color:#1c1917;">${esc(b.name)}</div>
-        <div style="font-size:11px;color:#a8a29e;">${count} Lieder${b.is_locked ? ' · <span style="color:#b45309;">Gesperrt</span>' : ''}</div>
+    const inviteUrl = bookInvites[b.id] ? buildInviteUrl(bookInvites[b.id]) : '';
+    return `<div style="display:flex;flex-direction:column;gap:8px;padding:12px;background:${b.is_locked ? '#fffbeb' : '#f9f8f6'};border:1px solid ${b.is_locked ? '#fde68a' : '#e7e5e4'};border-radius:12px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span class="badge" style="background:${c.bg};color:${c.text};">${b.abbr}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;color:#1c1917;">${esc(b.name)}</div>
+          <div style="font-size:11px;color:#a8a29e;">${count} Lieder${b.is_locked ? ' · <span style="color:#b45309;">Gesperrt</span>' : ''}</div>
+        </div>
+        <button onclick="toggleLock('${b.id}',${b.is_locked})" class="btn-small">${b.is_locked ? 'Entsperren' : 'Sperren'}</button>
+        <button onclick="deleteBook('${b.id}','${b.name.replace(/'/g, "\\'")}')" class="btn-danger">Löschen</button>
       </div>
-      <button onclick="toggleLock('${b.id}',${b.is_locked})" class="btn-small">${b.is_locked ? 'Entsperren' : 'Sperren'}</button>
-      <button onclick="deleteBook('${b.id}','${b.name.replace(/'/g, "\\'")}')" class="btn-danger">Löschen</button>
+      <div style="display:flex;align-items:center;gap:6px;padding-top:8px;border-top:0.5px solid #e7e5e4;">
+        <span style="flex:1;min-width:0;font-size:11px;color:#a8a29e;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(inviteUrl)}">${inviteUrl ? esc(inviteUrl) : 'Link wird erzeugt…'}</span>
+        <button onclick="copyBookInvite('${b.id}')" class="btn-small">Kopieren</button>
+        <button onclick="regenerateBookInvite('${b.id}','${b.name.replace(/'/g, "\\'")}')" class="btn-small">Neu</button>
+      </div>
     </div>`;
   }).join('') || '<div style="font-size:13px;color:#a8a29e;padding:8px 0;">Keine Bücher zugewiesen.</div>';
   // Render book-access cards
@@ -1433,6 +1476,36 @@ async function loadAdminScreen() {
       }).join('');
     }
   }
+}
+
+// ═══════════════════════════════════════════════════════
+// EINLADUNGSLINKS (pro Buch)
+// ═══════════════════════════════════════════════════════
+let bookInvites = {};
+
+function buildInviteUrl(token) {
+  return `${window.location.origin}${window.location.pathname}?invite=${token}`;
+}
+
+async function copyBookInvite(bookId) {
+  const token = bookInvites[bookId];
+  if (!token) { showToast('Link wird noch erzeugt, bitte kurz warten'); return; }
+  const url = buildInviteUrl(token);
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast('Link kopiert');
+  } catch (e) {
+    showToast('Link: ' + url, 6000);
+  }
+}
+
+async function regenerateBookInvite(bookId, bookName) {
+  if (!confirm(`Neuen Link für "${bookName}" erzeugen?\n\nDer bisherige Link funktioniert danach nicht mehr.`)) return;
+  const { data, error } = await supa.rpc('regenerate_book_invite', { p_book_id: bookId });
+  if (error) { showToast('Fehler: ' + error.message); return; }
+  bookInvites[bookId] = data;
+  showToast('Neuer Link erzeugt');
+  loadAdminScreen();
 }
 
 async function toggleLock(bookId, locked) {
