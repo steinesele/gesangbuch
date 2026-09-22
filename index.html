@@ -2237,6 +2237,13 @@ if ('serviceWorker' in navigator) {
           }
         });
       });
+      // Installierte PWAs werden beim erneuten Öffnen oft nur fortgesetzt statt
+      // neu geladen – deshalb hier aktiv auf Updates prüfen, statt auf den
+      // (seltenen) automatischen Browser-Check zu warten.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update();
+      });
+      window.addEventListener('focus', () => reg.update());
     } catch(e) {
       console.log('SW registration failed:', e);
     }
