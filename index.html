@@ -467,6 +467,12 @@ tailwind.config = {
         <div id="p-perms" style="display:flex;flex-direction:column;gap:6px;"></div>
       </div>
       <button onclick="doLogout()" class="btn-secondary" style="color:#dc2626;border-color:#fecaca;">Abmelden</button>
+      <!-- Konto löschen -->
+      <div>
+        <div class="section-title" style="margin-bottom:10px;color:#dc2626;">Konto löschen</div>
+        <p style="font-size:12px;color:#78716c;margin-bottom:10px;line-height:1.6;">Löscht dein Konto und alle persönlichen Daten (Name, E-Mail, Zugriffsrechte) unwiderruflich gemäß Art. 17 DSGVO. Von dir eingestellte Lieder und Gesangbücher bleiben als geteilter Inhalt erhalten, werden aber nicht mehr mit dir verknüpft.</p>
+        <button onclick="deleteMyAccount()" style="width:100%;padding:12px 20px;border-radius:12px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;font-size:14px;font-weight:600;cursor:pointer;">Mein Konto &amp; alle Daten löschen</button>
+      </div>
     </div>
   </div>
 
@@ -663,9 +669,9 @@ function goBack() {
   if (prev) goScreen(prev, false);
 }
 
-async function switchRole(r) {
+async function switchRole(r, targetScreen) {
   role = r;
-  const firstScreen = (NAV[r] || NAV.user)[0].id;
+  const firstScreen = targetScreen || (NAV[r] || NAV.user)[0].id;
   screenStack = [];
   activeScreen = '';
   // Show/hide buttons
@@ -798,8 +804,8 @@ async function afterLogin(user) {
   }
   // Hide login
   document.getElementById('login-overlay').style.display = 'none';
-  // Navigate to first screen for role
-  await switchRole(dbRole);
+  // Startseite ist immer "Lieder", unabhängig von der Rolle
+  await switchRole(dbRole, 'screen-songs');
   // Einladungslink einlösen, falls vorhanden
   await consumePendingInvite();
 }
@@ -2011,6 +2017,22 @@ async function changePassword() {
   document.getElementById('p-pw1').value = '';
   document.getElementById('p-pw2').value = '';
   showToast('Passwort geändert');
+}
+
+async function deleteMyAccount() {
+  if (!confirm('Dein Konto und alle persönlichen Daten werden unwiderruflich gelöscht. Fortfahren?')) return;
+  if (!confirm('Letzte Bestätigung: Konto wirklich endgültig löschen? Das kann nicht rückgängig gemacht werden.')) return;
+  const { error: clearErr } = await supa.rpc('_clear_account_references');
+  if (clearErr) { showToast('Fehler: ' + clearErr.message, 6000); return; }
+  const { error: delErr } = await supa.rpc('delete_my_account');
+  if (delErr) { showToast('Fehler: ' + delErr.message, 6000); return; }
+  await supa.auth.signOut();
+  currentUser = null; currentProfile = null; role = 'user';
+  BOOKS = []; SONGS = [];
+  document.getElementById('login-overlay').style.display = 'flex';
+  document.getElementById('login-loading').style.display = 'none';
+  showLogin();
+  showToast('Konto und Daten gelöscht');
 }
 
 // ═══════════════════════════════════════════════════════
